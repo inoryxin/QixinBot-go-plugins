@@ -128,6 +128,18 @@ async function remember(session, role, content) {
     )
   }
 
+  // 个人记忆上限：这个 QQ 的全部消息只留最近 N 条（跨会话）
+  if (role === 'user' && session.user_id) {
+    const cap = Math.max(50, Math.min(5000, Number(settings.personal_memory) || 500))
+    await db('exec',
+      `DELETE FROM ai_message
+       WHERE role = 'user' AND user_id = ? AND id NOT IN (
+         SELECT id FROM ai_message WHERE role = 'user' AND user_id = ?
+         ORDER BY id DESC LIMIT ?
+       )`,
+      [session.user_id, session.user_id, cap])
+  }
+
   // 按群滚动清理
   const limit = Math.max(50, Number(settings.memory_limit) || 1000)
   await db('exec',
@@ -307,6 +319,56 @@ async function personaCommand(session, text) {
   }
 
   await reply('可用：/人设 看 · /人设 切换 <名字> · /人设 新建 <名字> <描述> · /人设 删除 <名字>')
+}
+
+// 按相关度召回个人记忆。
+//
+// 先拿最近 base 条保证"记得住近况"，再用当前消息里的词去匹配历史，
+// 匹配到就多带（最多 maxN 条）。不调模型，纯 SQL。
+async function recallPersonal(session, text, base, maxN) {
+  const exclude = { chat_type: session.chat_type, chat_id: session.chat_id }
+  const seen = new Set()
+  const out = []
+
+  const push = (rows) => {
+    for (const r of rows || []) {
+      if (out.length >= maxN) return
+      if (seen.has(r.content)) continue
+      seen.add(r.content)
+      out.push(r)
+    }
+  }
+
+  if (base > 0) {
+    push(await personalHistory(session.user_id, base, exclude))
+  }
+
+  const words = []
+  const clean = String(text || '').replace(/[^\p{Script=Han}a-zA-Z0-9]/gu, ' ').trim()
+  for (const w of clean.split(/\s+/)) {
+    if (!w) continue
+    if (/^[a-zA-Z0-9]+$/.test(w)) {
+      if (w.length >= 2) words.push(w)
+    } else {
+      for (let i = 0; i + 1 < w.length && words.length < 6; i += 2) words.push(w.slice(i, i + 2))
+      if (w.length >= 2) words.push(w)
+    }
+  }
+
+  if (words.length && session.user_id) {
+    const uniq = [...new Set(words)].slice(0, 6)
+    const cond = uniq.map(() => 'content LIKE ?').join(' OR ')
+    const r = await db('all',
+      `SELECT content, ts, chat_type, chat_id FROM ai_message
+       WHERE user_id = ? AND role = 'user'
+         AND NOT (chat_type = ? AND chat_id = ?)
+         AND (${cond})
+       ORDER BY id DESC LIMIT ?`,
+      [session.user_id, exclude.chat_type, exclude.chat_id, ...uniq.map((w) => `%${w}%`), maxN])
+    push(r.rows)
+  }
+
+  return out
 }
 
 // ---------------------------------------------------------------- 知识库
@@ -836,11 +898,12 @@ async function buildMessages(session, userText, extraPrompt, images) {
   const messages = [{ role: 'system', content: parts.join('\n') }]
 
   // ① 个人记忆：这个人以前说过什么（跨群）
-  const personalLimit = Number(settings.personal_memory) || 200
-  const personal = await personalHistory(session.user_id, Math.min(personalLimit, 10), {
-    chat_type: session.chat_type,
-    chat_id: session.chat_id,
-  })
+  // 动态召回：平常只带几条；聊到相关话题（提到人名/事物）才多带。
+  // 固定带 10 条的话，闲聊每轮都在为无关记忆付 token。
+  const base = Math.max(0, Math.min(10, Number(settings.memory_base) || 3))
+  const maxN = Math.max(base, Math.min(30, Number(settings.memory_max) || 15))
+  const personal = await recallPersonal(session, userText, base, maxN)
+  host.log('debug', `记忆召回 n=${personal.length} base=${base} max=${maxN}`)
   if (personal.length) {
     const lines = personal
       .map((m) => `- [${m.chat_type === 'private' ? '私聊' : '群'}] ${m.content.replace(/\n/g, ' ')}`)

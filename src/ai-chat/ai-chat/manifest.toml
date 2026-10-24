@@ -258,11 +258,23 @@ max = 100
 
 [[settings]]
 key = "personal_memory"
-label = "个人记忆条数（跨群）"
+label = "个人记忆上限（条，多了不存）"
 type = "number"
-default = 200
+default = 500
 min = 0
 max = 2000
+
+[[settings]]
+key = "memory_base"
+label = "平常聊天带几条记忆"
+type = "number"
+default = 3
+
+[[settings]]
+key = "memory_max"
+label = "聊到相关话题最多带几条"
+type = "number"
+default = 15
 
 [[settings]]
 key = "use_affinity"
