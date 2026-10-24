@@ -866,8 +866,24 @@ async function buildMessages(session, userText, extraPrompt, images) {
       const score = typeof aff.score === 'number' ? aff.score : aff.affinity
       const level = aff.level || aff.title
       if (score !== undefined) {
-        parts.push(`你对当前说话的人好感度是 ${score}${level ? `（${level}）` : ''}，据此调整语气。`)
-        host.log('debug', `好感度 user=${session.user_id} score=${score} level=${level || '-'}`)
+        const tone = aff.tone || 'normal'
+        const base = aff.base
+        let line
+        if (aff.is_master) {
+          line = `这是你的主人，好感度是满的（${score}）。他骂你、损你也当调情，` +
+            `别真的生气，最多嘴上委屈一下然后贴上去。`
+        } else if (tone === 'cold') {
+          line = `你对这个人好感度 ${score}（基础 ${base}），关系很差。` +
+            `说话阴阳怪气、敷衍、带刺，别热情。`
+        } else if (tone === 'cool') {
+          line = `你对这个人好感度 ${score}（基础 ${base}），有点冷淡。话少一点、别主动贴。`
+        } else if (tone === 'warm') {
+          line = `你对这个人好感度 ${score}，很亲近。语气放松、可以黏一点。`
+        } else {
+          line = `你对这个人好感度 ${score}，正常朋友语气。`
+        }
+        parts.push(line)
+        host.log('debug', `好感度 user=${session.user_id} score=${score} tone=${tone} master=${!!aff.is_master}`)
       }
     }
   }
