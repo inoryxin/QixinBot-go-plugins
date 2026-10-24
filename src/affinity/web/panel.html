@@ -1,0 +1,73 @@
+<!-- 好感度：看排行、手动加减 -->
+<h2 style="margin-top:8px">好感度</h2>
+<p class="muted" style="margin:0 0 10px">
+  和每个人的关系分。聊天会慢慢涨（每天有上限），也可以手动调。
+  AI 聊天装了本插件时会参考这个分数调整语气。
+</p>
+
+<div class="row" style="margin-bottom:10px">
+  <button onclick="afLoad()">刷新</button>
+  <input type="text" id="af-qq" placeholder="QQ 号" style="width:160px">
+  <input type="number" id="af-delta" placeholder="加减多少（可为负）" style="width:180px" value="10">
+  <button onclick="afAdd()">加减</button>
+  <button onclick="afSet()">直接设</button>
+</div>
+<div id="af-body" class="muted">加载中…</div>
+
+<script>
+(function(){
+  function $(id){ return document.getElementById(id) }
+  function esc(t){ return String(t).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])) }
+
+  async function call(args){
+    const body = new FormData()
+    body.set('name', 'affinity.manage')
+    body.set('args', JSON.stringify(args))
+    const r = await fetch('/api/capabilities/call', { method: 'POST', body })
+    const j = await r.json()
+    if (!j.ok) throw new Error(j.error || '调用失败')
+    const inner = j.result || {}
+    if (inner.ok === false) throw new Error(inner.error || '插件返回失败')
+    return inner.data || {}
+  }
+
+  window.afLoad = async function(){
+    try {
+      const d = await call({ action: 'top', limit: 20 })
+      const rows = d.users || []
+      if (!rows.length) { $('af-body').innerHTML = '<p class="muted">还没有记录——聊几句就有了</p>'; return }
+      let h = '<table><thead><tr><th>QQ</th><th>好感度</th><th>关系</th><th></th></tr></thead><tbody>'
+      for (const u of rows) {
+        h += '<tr><td>' + u.user_id + '</td><td>' + u.score + '</td><td>' + esc(u.level) + '</td>' +
+             '<td><a href="#" onclick="event.preventDefault();afQuick(' + u.user_id + ',10)">+10</a>　' +
+             '<a href="#" onclick="event.preventDefault();afQuick(' + u.user_id + ',-10)">-10</a></td></tr>'
+      }
+      h += '</tbody></table>'
+      $('af-body').innerHTML = h
+    } catch (e) { $('af-body').textContent = '读取失败：' + e.message }
+  }
+
+  window.afAdd = async function(){
+    const uid = Number($('af-qq').value)
+    const delta = Number($('af-delta').value)
+    if (!uid) return alert('填 QQ 号')
+    await call({ action: 'add', user_id: uid, delta })
+    afLoad()
+  }
+
+  window.afSet = async function(){
+    const uid = Number($('af-qq').value)
+    const score = Number($('af-delta').value)
+    if (!uid) return alert('填 QQ 号')
+    await call({ action: 'set', user_id: uid, score })
+    afLoad()
+  }
+
+  window.afQuick = async function(uid, delta){
+    await call({ action: 'add', user_id: uid, delta })
+    afLoad()
+  }
+
+  afLoad()
+})()
+</script>

@@ -1,0 +1,84 @@
+id = "affinity"
+name = "好感度"
+version = "1.0.0"
+apiVersion = "1.x"
+exec = ["node", "app/index.js"]
+description = "记住每个人和她的关系，供 AI 调整语气；带榜单和手动调整"
+
+# 要靠观察者拿全量消息来涨好感（别被 keyword-reply 抢走就漏了）
+observe = true
+
+provides = ["affinity.get@1", "affinity.manage@1"]
+
+[[capability]]
+name = "affinity.get"
+
+[capability.parameters]
+type = "object"
+required = ["user_id"]
+
+[capability.parameters.properties.user_id]
+type = "number"
+
+[[capability]]
+name = "affinity.manage"
+
+[capability.parameters]
+type = "object"
+required = ["action"]
+
+[capability.parameters.properties.action]
+type = "string"
+enum = ["list", "top", "get", "set", "add"]
+
+[capability.parameters.properties.user_id]
+type = "number"
+
+[capability.parameters.properties.score]
+type = "number"
+
+[capability.parameters.properties.delta]
+type = "number"
+
+[capability.parameters.properties.limit]
+type = "number"
+
+[[commands]]
+id = "affinity.view"
+usage = "好感"
+description = "看她对你（或被@的人）的好感度"
+
+[[commands]]
+id = "affinity.top"
+usage = "好感 榜"
+description = "好感度排行榜"
+
+[[commands]]
+id = "affinity.add"
+usage = "好感 加 <QQ> <分值>"
+description = "给某人加/减好感（管理员）"
+require_role = "admin"
+
+[[commands]]
+id = "affinity.set"
+usage = "好感 设 <QQ> <分值>"
+description = "直接设定好感（管理员）"
+require_role = "admin"
+
+[[settings]]
+key = "enabled"
+label = "启用好感度"
+type = "bool"
+default = true
+
+[[settings]]
+key = "daily_gain"
+label = "每天靠聊天最多涨几分"
+type = "number"
+default = 2
+
+[[settings]]
+key = "private_bonus"
+label = "私聊每条额外加几分"
+type = "number"
+default = 1

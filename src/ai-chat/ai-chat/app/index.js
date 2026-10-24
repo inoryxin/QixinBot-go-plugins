@@ -867,6 +867,7 @@ async function buildMessages(session, userText, extraPrompt, images) {
       const level = aff.level || aff.title
       if (score !== undefined) {
         parts.push(`你对当前说话的人好感度是 ${score}${level ? `（${level}）` : ''}，据此调整语气。`)
+        host.log('debug', `好感度 user=${session.user_id} score=${score} level=${level || '-'}`)
       }
     }
   }
