@@ -150,6 +150,17 @@ description = "删除一个人设（内置实现）"
 require_role = "owner"
 hidden = true
 
+# 内置人设用到的共享键（完整 key = ai-chat.persona_group）
+[[shared]]
+key = "persona_group"
+description = "本群当前人设名（内置实现）"
+default = "群聊"
+
+[[shared]]
+key = "persona_private"
+description = "私聊当前人设名（内置实现）"
+default = "私聊"
+
 [[settings]]
 key = "system_prompt"
 label = "系统提示词（内置人设）"

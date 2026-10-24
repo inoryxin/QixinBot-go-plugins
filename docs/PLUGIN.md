@@ -1006,6 +1006,9 @@ default = "小鲸鱼"
 
 - key 自动加 `<插件id>.` 前缀 → `ai-chat.persona`，不会撞
 - **只有声明者能写**，其他插件只读
+- **没声明就写不进去**：`host.shared_set` 会报
+  「只能写自己在 manifest 的 [[shared]] 里声明过的 key」。
+  写的时候用完整 key（`<插件id>.<key>`），别只写 `key`
 - 存在 `data/shared.json`，跟插件一起备份
 
 ```js

@@ -68,6 +68,22 @@ usage = "人设 删除 <名字>"
 description = "删除一个人设"
 require_role = "owner"
 
+# 声明后才能写：完整 key = ai-persona.current_group
+[[shared]]
+key = "current_group"
+description = "本群当前人设名"
+default = "群聊"
+
+[[shared]]
+key = "current_private"
+description = "私聊当前人设名"
+default = "私聊"
+
+[[shared]]
+key = "style_override"
+description = "临时说话风格（能力 set_style 用）"
+default = ""
+
 [[settings]]
 key = "system_prompt"
 label = "基础系统提示词"

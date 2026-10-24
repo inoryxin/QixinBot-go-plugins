@@ -2,9 +2,14 @@
      数据在 ai-persona 插件的 persona 表，这里用 persona.manage 能力读写。 -->
 <div style="margin-top:12px;padding:12px 14px;border:1px solid var(--border);border-radius:8px;background:var(--hover)">
   <p style="margin:0 0 6px"><strong>系统提示词和人设是同一件事</strong>，都在这个插件里管。</p>
-  <p class="muted" style="margin:0">
+  <p class="muted" style="margin:0 0 6px">
     AI 聊天插件每轮回话前会调 <code>persona.render</code> 取整合好的提示词——
-    基础提示词（下面的设置）+ 当前人设 + 自称 + 风格。
+    <strong>上面「设置」里的基础提示词 + 当前人设 + 自称 + 风格</strong>，
+    再加上 AI 聊天学到的群语气和黑话。
+  </p>
+  <p class="muted" style="margin:0">
+    AI 聊天插件页里也有「系统提示词 / 自称 / 风格」那几项——
+    <strong>那是本插件没装或停用时的兜底</strong>。两个都开着时，以这一页为准。
   </p>
 </div>
 

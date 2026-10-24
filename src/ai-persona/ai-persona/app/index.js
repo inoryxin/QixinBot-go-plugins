@@ -84,7 +84,7 @@ async function savePersona(name, content) {
 
 async function currentName(chatType) {
   const scope = chatType === 'private' ? 'private' : 'group'
-  const saved = await host.sharedGet('persona.current_' + scope)
+  const saved = await host.sharedGet('ai-persona.current_' + scope)
   return {
     scope,
     name: saved || (scope === 'private' ? '私聊' : '群聊'),
@@ -178,7 +178,7 @@ async function personaCommand(session, text) {
       const names = (await listPersonas()).map((x) => x.name).join('、')
       return reply(`没有人设「${name}」\n现有：${names}`)
     }
-    await host.sharedSet('persona.current_' + scope, name)
+    await host.sharedSet('ai-persona.current_' + scope, name)
     await reply(`${scopeName}已切换到「${name}」`)
     return
   }
@@ -207,8 +207,8 @@ async function personaCommand(session, text) {
     if (DEFAULT_PERSONAS[name]) return reply('内置人设不能删（可以改内容）')
     await db('exec', `DELETE FROM persona WHERE name = ?`, [name])
     for (const sc of ['group', 'private']) {
-      const cur = await host.sharedGet('persona.current_' + sc)
-      if (cur === name) await host.sharedSet('persona.current_' + sc, sc === 'private' ? '私聊' : '群聊')
+      const cur = await host.sharedGet('ai-persona.current_' + sc)
+      if (cur === name) await host.sharedSet('ai-persona.current_' + sc, sc === 'private' ? '私聊' : '群聊')
     }
     await reply(`人设「${name}」已删除`)
     return
@@ -261,8 +261,8 @@ async function manage(args) {
     if (DEFAULT_PERSONAS[name]) throw new Error('内置人设不能删')
     await db('exec', `DELETE FROM persona WHERE name = ?`, [name])
     for (const sc of ['group', 'private']) {
-      const cur = await host.sharedGet('persona.current_' + sc)
-      if (cur === name) await host.sharedSet('persona.current_' + sc, sc === 'private' ? '私聊' : '群聊')
+      const cur = await host.sharedGet('ai-persona.current_' + sc)
+      if (cur === name) await host.sharedSet('ai-persona.current_' + sc, sc === 'private' ? '私聊' : '群聊')
     }
     return { deleted: name }
   }
@@ -271,12 +271,12 @@ async function manage(args) {
     const scope = args?.scope === 'private' ? 'private' : 'group'
     if (!name) throw new Error('需要 name')
     if (!(await getPersona(name))) throw new Error(`人设 ${name} 不存在`)
-    await host.sharedSet('persona.current_' + scope, name)
+    await host.sharedSet('ai-persona.current_' + scope, name)
     return { scope, current: name }
   }
   if (action === 'style') {
     const content = String(args?.content || '').trim()
-    await host.sharedSet('persona.style_override', content)
+    await host.sharedSet('ai-persona.style_override', content)
     return { style: content }
   }
   throw new Error(`未知 action: ${action}`)
