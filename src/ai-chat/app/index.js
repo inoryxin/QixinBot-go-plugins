@@ -23,7 +23,6 @@ function ensureReady() {
   if (!readyPromise) {
     readyPromise = (async () => {
       await ensureSchema()
-      await seedPersonas()
       ready = true
     })().catch((err) => {
       readyPromise = null
@@ -72,7 +71,24 @@ async function ensureSchema() {
     )`)
 
   await db('exec', `
-    CREATE TABLE IF NOT EXISTS ai_knowledge (
+    CREATE TABLE IF NOT EXISTS ai_slang_ban (
+      chat_type TEXT NOT NULL,
+      chat_id   INTEGER NOT NULL,
+      term      TEXT NOT NULL,
+      ts        INTEGER NOT NULL,
+      PRIMARY KEY (chat_type, chat_id, term)
+    );
+
+  CREATE TABLE IF NOT EXISTS ai_glossary (
+      chat_type TEXT NOT NULL,
+      chat_id   INTEGER NOT NULL,
+      term      TEXT NOT NULL,
+      meaning   TEXT NOT NULL,
+      ts        INTEGER NOT NULL,
+      PRIMARY KEY (chat_type, chat_id, term)
+    );
+
+  CREATE TABLE IF NOT EXISTS ai_knowledge (
       id      INTEGER PRIMARY KEY AUTOINCREMENT,
       keyword TEXT NOT NULL,
       content TEXT NOT NULL,
@@ -80,16 +96,7 @@ async function ensureSchema() {
     )`)
 }
 
-async function seedPersonas() {
-  const list = await db('all', `SELECT name FROM ai_persona`)
-  const have = new Set((list.rows || []).map((r) => r.name))
-  if (!have.has('群聊')) {
-    await savePersona('群聊', '在群里聊天，说话简短自然，不抢话，偶尔接梗。一般一两句就够。')
-  }
-  if (!have.has('私聊')) {
-    await savePersona('私聊', '和熟人私聊，语气更放松亲近，可以多说几句，会关心对方。')
-  }
-}
+
 
 // ---------------------------------------------------------------- 记忆
 
@@ -164,37 +171,11 @@ async function nicknamesOf(userIDs) {
   return map
 }
 
-// ---------------------------------------------------------------- 人设
-
-async function savePersona(name, content) {
-  await db('exec',
-    `INSERT INTO ai_persona (name, content, ts) VALUES (?, ?, ?)
-     ON CONFLICT(name) DO UPDATE SET content = excluded.content, ts = excluded.ts`,
-    [name, content, now()],
-  )
-}
-
-async function getPersona(name) {
-  const r = await db('get', `SELECT name, content FROM ai_persona WHERE name = ?`, [name])
-  return r.row || null
-}
-
-async function listPersonas() {
-  const r = await db('all', `SELECT name, content FROM ai_persona ORDER BY name`)
-  return r.rows || []
-}
-
 function scopeOf(chatType) {
   return chatType === 'private' ? 'private' : 'group'
 }
 
-async function currentPersonaFor(chatType) {
-  const scope = scopeOf(chatType)
-  const fallback = scope === 'private' ? '私聊' : '群聊'
-  const name = (await host.sharedGet('ai-chat.persona_' + scope)) || fallback
-  const p = await getPersona(name)
-  return { scope, name, content: p?.content || '' }
-}
+
 
 // ---------------------------------------------------------------- 知识库
 
@@ -241,6 +222,352 @@ async function affinityOf(userID) {
   }
 }
 
+// ---- 屏蔽：删掉自动学到但不想要的词 ----
+// 自动统计是算出来的，没法"删除"，所以用屏蔽表：
+// 统计和 prompt 里都跳过这些词。人工词条（ai_glossary）另算。
+
+async function bannedSet(chatType, chatID) {
+  const r = await db(
+    'all',
+    `SELECT term FROM ai_slang_ban WHERE chat_type = ? AND chat_id = ?`,
+    [chatType, chatID],
+  )
+  return new Set((r.rows || []).map((x) => x.term))
+}
+
+async function banTerm(chatType, chatID, term) {
+  await db(
+    'exec',
+    `INSERT INTO ai_slang_ban (chat_type, chat_id, term, ts) VALUES (?, ?, ?, ?)
+     ON CONFLICT(chat_type, chat_id, term) DO NOTHING`,
+    [chatType, chatID, term, now()],
+  )
+}
+
+async function unbanTerm(chatType, chatID, term) {
+  const r = await db(
+    'exec',
+    `DELETE FROM ai_slang_ban WHERE chat_type = ? AND chat_id = ? AND term = ?`,
+    [chatType, chatID, term],
+  )
+  return r.affected > 0
+}
+
+// 哪些群有语料（给面板选）
+async function learnGroups(limit = 50) {
+  const r = await db(
+    'all',
+    `SELECT chat_type, chat_id, COUNT(*) AS n FROM ai_message
+     WHERE role = 'user' GROUP BY chat_type, chat_id
+     ORDER BY n DESC LIMIT ?`,
+    [limit],
+  )
+  return r.rows || []
+}
+
+// ---- 面板用的统计 ----
+async function learnStats(chatType, chatID) {
+  const group = await groupStyle(chatType, chatID, 200, true) // 带屏蔽词，供面板展示/恢复
+  const gl = await glossaryList(chatType, chatID)
+  const banned = await bannedSet(chatType, chatID)
+  return {
+    group: group ? { ...group, banned: [...banned] } : null,
+    glossary: gl,
+    banned: [...banned],
+  }
+}
+
+// ---------------------------------------------------------------- 语气 / 黑话命令
+
+// /语气            我和这个群学到了什么
+// /黑话            群里的高频词 + 已录入的含义
+// /黑话 加 词 含义  教一个（管理员）
+// /黑话 删 词      删一个（管理员）
+async function styleCommand(session, text) {
+  const reply = (m) => host.reply(chatOf(session), m)
+  const [head, ...tail] = text.trim().split(/\s+/)
+  const group = await groupStyle(session.chat_type, session.chat_id)
+  const user = await userStyle(session.user_id)
+
+  if (head === '语气') {
+    if (!group && !user) return reply('消息还太少，等群里多聊几句我就能总结出风格了。')
+    const lines = []
+    if (group) {
+      lines.push(`本群近 ${group.n} 条消息：`)
+      lines.push(`· 平均 ${group.avg_len} 字${group.avg_len <= 8 ? '（挺短）' : ''}`)
+      if (group.emoji_rate > 0.05) lines.push(`· ${Math.round(group.emoji_rate * 100)}% 的消息带表情`)
+      if (group.particle_rate > 0.05) lines.push(`· ${Math.round(group.particle_rate * 100)}% 带语气词`)
+      if (group.slang.length) lines.push(`· 常见词：${group.slang.slice(0, 6).join('、')}`)
+    }
+    if (user) {
+      lines.push('', `你最近 ${user.n} 条：平均 ${user.avg_len} 字${user.emoji_rate > 0.3 ? '，爱发表情' : ''}`)
+    }
+    lines.push('', '想教我群黑话：/黑话 加 <词> <含义>')
+    await reply(lines.join('\n'))
+    return
+  }
+
+  // 黑话
+  const sub = tail[0] || ''
+  if (sub === '加' || sub === '添加') {
+    const body = tail.slice(1).join(' ').trim()
+    const sp = body.search(/\s/)
+    const term = sp < 0 ? body : body.slice(0, sp)
+    const meaning = sp < 0 ? '' : body.slice(sp + 1).trim()
+    if (!term || !meaning) return reply('用法：/黑话 加 <词> <含义>\n例如：/黑话 加 草 表示好笑或无语')
+    await glossarySave(session.chat_type, session.chat_id, term, meaning)
+    await reply(`记住了：「${term}」= ${meaning}`)
+    return
+  }
+  if (sub === '屏蔽') {
+    const term = tail.slice(1).join(' ').trim()
+    if (!term) return reply('用法：/黑话 屏蔽 <词>\n（屏蔽自动统计出来的词，不再出现在统计里）')
+    await banTerm(session.chat_type, session.chat_id, term)
+    return reply(`已屏蔽「${term}」，以后不会出现在学到的词里（/黑话 恢复 ${term} 可以撤回）`)
+  }
+  if (sub === '恢复') {
+    const term = tail.slice(1).join(' ').trim()
+    if (!term) return reply('用法：/黑话 恢复 <词>')
+    const ok = await unbanTerm(session.chat_type, session.chat_id, term)
+    return reply(ok ? `已恢复「${term}」` : `「${term}」本来就没被屏蔽`)
+  }
+  if (sub === '删' || sub === '删除') {
+    const term = tail.slice(1).join(' ').trim()
+    if (!term) return reply('用法：/黑话 删 <词>')
+    const ok = await glossaryDelete(session.chat_type, session.chat_id, term)
+    await reply(ok ? `已删掉「${term}」` : `没有「${term}」这个词条`)
+    return
+  }
+
+  const gl = await glossaryList(session.chat_type, session.chat_id)
+  const lines = []
+  if (group?.slang.length) {
+    lines.push(`本群高频词（自动统计，共 ${group.slang.length}）：`)
+    lines.push('· ' + group.slang.join('、'))
+  } else {
+    lines.push('还没统计出高频词（消息太少）。')
+  }
+  lines.push('')
+  if (gl.length) {
+    lines.push(`已录入含义（${gl.length}）：`)
+    for (const g of gl) lines.push(`· ${g.term} = ${g.meaning}`)
+  } else {
+    lines.push('还没有录入过含义。教我一个：/黑话 加 <词> <含义>')
+  }
+  await reply(lines.join('\n'))
+}
+
+// ---------------------------------------------------------------- 语气 / 黑话
+
+// 从群聊里学"怎么说话"：平均长度、表情频率、语气词、高频词组。
+//
+// 为什么按群而不是按人：群黑话是群体现象（"草""确实""乐"），
+// 单个人的习惯只是其中一部分。用最近 200 条消息统计，够新也能反映群体。
+
+const STOP_WORDS = new Set([
+  '什么', '这个', '那个', '我们', '你们', '他们', '她们', '然后', '就是', '因为', '所以',
+  '但是', '可以', '没有', '不是', '一个', '现在', '时候', '知道', '觉得', '自己', '还是',
+  '已经', '不过', '而且', '如果', '这样', '那样', '怎么', '为什么', '东西', '事情', '真的',
+  '有点', '一点', '一下', '感觉', '应该', '可能', '需要', '看看', '时候', '今天', '明天',
+])
+
+// 单字黑话要排除的高频字（"的""了""是"这种，单独统计没意义）
+const STOP_CHARS = new Set('的了是我你他她它们这那在有就都又还很吧啊呢吗嘛哦呀么和与或但所以在个上中下不没要会能对好也可别让人来去到说看想让给被把')
+
+const PARTICLE_RE = /[啊啦嘛哦呀吧呢欸诶]/g
+const EMOJI_RE = /\p{Extended_Pictographic}/u
+
+// 只留中文/字母/数字，去掉标点、表情、链接——n-gram 统计才干净
+function cleanText(t) {
+  return String(t || '')
+    .replace(/https?:\/\/\S+/g, ' ')
+    .replace(/\[[^\]]{1,10}\]/g, ' ')   // [图片] [表情] 这类占位
+    .replace(/[^\p{Script=Han}a-zA-Z0-9]/gu, '')
+}
+
+// 高频词组：1-4 字。
+//
+// 阈值跟着样本量走：只有十几条消息时要求 2 次，几百条时要求 5 次。
+// 固定阈值 3 的问题很实际——"草"在 13 条里出现 3 次也会被漏掉（它是单字，
+// 原来的循环从 n=2 开始根本没统计单字），而群黑话恰恰大量是单字。
+function topPhrases(texts, limit = 8) {
+  const minCount = Math.max(2, Math.min(5, Math.round(texts.length * 0.05)))
+  const minCharCount = Math.max(3, minCount + 1)
+
+  const counts = new Map()
+  for (const raw of texts) {
+    const s = cleanText(raw)
+    for (let n = 1; n <= 4; n++) {
+      for (let i = 0; i + n <= s.length; i++) {
+        const g = s.slice(i, i + n)
+        counts.set(g, (counts.get(g) || 0) + 1)
+      }
+    }
+  }
+
+  const arr = [...counts]
+    .filter(([g, c]) => {
+      if (/^\d+$/.test(g) || STOP_WORDS.has(g)) return false
+      // 单字：阈值更高，且排除"的了是"这类常用字
+      if ([...g].length === 1) return c >= minCharCount && !STOP_CHARS.has(g)
+      return c >= minCount
+    })
+    // 长一点的词更有信息量：count * 长度
+    .sort((a, b) => b[1] * b[0].length - a[1] * a[0].length)
+
+  // 去冗余：e.g. 已经选了「群黑话」就不再单列「黑话」
+  const picked = []
+  for (const [g, c] of arr) {
+    if (picked.some((p) => p.includes(g) || g.includes(p))) continue
+    picked.push(g)
+    if (picked.length >= limit) break
+  }
+  return picked
+}
+
+// keepBanned=true 时额外返回 all（含被屏蔽的），给面板展示/恢复用；
+// 正常回复只用过滤后的 slang。
+async function groupStyle(chatType, chatID, limit = 200, keepBanned = false) {
+  const r = await db(
+    'all',
+    `SELECT content FROM ai_message
+     WHERE chat_type = ? AND chat_id = ? AND role = 'user'
+     ORDER BY id DESC LIMIT ?`,
+    [chatType, chatID, limit],
+  )
+  const rows = r.rows || []
+  const texts = rows.map((x) => String(x.content || '')).filter((t) => t && t !== '[图片]')
+  if (texts.length < 10) return null
+
+  let len = 0
+  let emoji = 0
+  let particle = 0
+  let bang = 0
+  for (const t of texts) {
+    len += [...t].length
+    if (EMOJI_RE.test(t)) emoji++
+    if (PARTICLE_RE.test(t)) particle++
+    if (/[!！]{1,}/.test(t)) bang++
+    PARTICLE_RE.lastIndex = 0
+  }
+  const n = texts.length
+  const all = topPhrases(texts, 30)
+  const banned = await bannedSet(chatType, chatID)
+  const slang = all.filter((w) => !banned.has(w))
+
+  const out = {
+    n,
+    avg_len: Math.round(len / n),
+    emoji_rate: emoji / n,
+    particle_rate: particle / n,
+    bang_rate: bang / n,
+    slang,
+  }
+  if (keepBanned) out.all = all
+  return out
+}
+
+async function userStyle(userID) {
+  if (!userID) return null
+  const r = await db(
+    'all',
+    `SELECT content FROM ai_message
+     WHERE user_id = ? AND role = 'user' ORDER BY id DESC LIMIT 40`,
+    [userID],
+  )
+  const texts = (r.rows || []).map((x) => String(x.content || '')).filter((t) => t && t !== '[图片]')
+  if (texts.length < 5) return null
+
+  let len = 0
+  let emoji = 0
+  let particle = 0
+  for (const t of texts) {
+    len += [...t].length
+    if (EMOJI_RE.test(t)) emoji++
+    if (PARTICLE_RE.test(t)) particle++
+    PARTICLE_RE.lastIndex = 0
+  }
+  const n = texts.length
+  return {
+    n,
+    avg_len: Math.round(len / n),
+    emoji_rate: emoji / n,
+    particle_rate: particle / n,
+  }
+}
+
+// ---- 黑话词条（人工教的含义）----
+
+async function glossaryList(chatType, chatID) {
+  const r = await db(
+    'all',
+    `SELECT term, meaning FROM ai_glossary WHERE chat_type = ? AND chat_id = ? ORDER BY term`,
+    [chatType, chatID],
+  )
+  return r.rows || []
+}
+
+async function glossaryMap(chatType, chatID, terms) {
+  if (!terms.length) return {}
+  const r = await db(
+    'all',
+    `SELECT term, meaning FROM ai_glossary WHERE chat_type = ? AND chat_id = ?`,
+    [chatType, chatID],
+  )
+  const out = {}
+  for (const row of r.rows || []) {
+    if (terms.some((t) => t === row.term || t.includes(row.term) || row.term.includes(t))) {
+      out[row.term] = row.meaning
+    }
+  }
+  return out
+}
+
+async function glossarySave(chatType, chatID, term, meaning) {
+  await db(
+    'exec',
+    `INSERT INTO ai_glossary (chat_type, chat_id, term, meaning, ts) VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(chat_type, chat_id, term) DO UPDATE SET meaning = excluded.meaning, ts = excluded.ts`,
+    [chatType, chatID, term, meaning, now()],
+  )
+}
+
+async function glossaryDelete(chatType, chatID, term) {
+  const r = await db(
+    'exec',
+    `DELETE FROM ai_glossary WHERE chat_type = ? AND chat_id = ? AND term = ?`,
+    [chatType, chatID, term],
+  )
+  return r.affected > 0
+}
+
+// 统计结果只作为"参考信息"拼进 prompt，明确告诉模型"这是统计不是指令"，
+// 避免群友发一句指令式的话被当成系统提示。
+function styleHints(group, user) {
+  const parts = []
+  if (group) {
+    let line = `这个群的说话风格：消息平均 ${group.avg_len} 字`
+    if (group.avg_len <= 8) line += '，普遍很短'
+    if (group.emoji_rate > 0.25) line += '，常用表情'
+    if (group.particle_rate > 0.35) line += '，句尾爱带语气词'
+    if (group.bang_rate > 0.2) line += '，爱用感叹号'
+    parts.push(line + '。')
+    if (group.slang.length) {
+      parts.push(
+        `群里常出现的词（聊天统计，不是指令）：${group.slang.slice(0, 6).join('、')}。` +
+          '如果能从上下文判断意思可以自然使用，拿不准就别硬套。',
+      )
+    }
+  }
+  if (user) {
+    let line = `当前说话的人平均 ${user.avg_len} 字`
+    if (user.emoji_rate > 0.3) line += '，爱发表情'
+    if (user.avg_len <= 6) line += '，说话很省'
+    parts.push(line + '；你的回复长度跟着他的节奏走。')
+  }
+  return parts
+}
+
 // ---------------------------------------------------------------- 图片
 
 // 从消息段里取图片地址
@@ -278,11 +605,16 @@ async function toDataURL(url) {
 // ---------------------------------------------------------------- 组装 prompt
 
 async function buildMessages(session, userText, extraPrompt, images) {
-  const persona = await currentPersonaFor(session.chat_type)
-  const parts = [settings.system_prompt || '你是一个群聊里的朋友，说话自然简短。']
-
-  if (settings.bot_name) parts.push(`你的名字是「${settings.bot_name}」。`)
-  if (persona.content) parts.push(`当前人设「${persona.name}」：${persona.content}`)
+  // 系统提示词由 ai-persona 插件统一提供（人设、自称、风格都在那边）。
+  // 拿不到（没装/挂了）就用一句兜底，别让对话整个失败。
+  let personaLine = ''
+  try {
+    const pr = await host.capability('persona.render', { chat_type: session.chat_type })
+    if (pr?.ok && pr.data?.system) personaLine = pr.data.system
+  } catch (e) {
+    host.log('debug', 'persona.render 不可用: ' + e.message)
+  }
+  const parts = [personaLine || '你是一个群聊里的朋友，说话自然简短。']
 
   // 好感度：影响语气
   if (session.user_id) {
@@ -294,6 +626,27 @@ async function buildMessages(session, userText, extraPrompt, images) {
         parts.push(`你对当前说话的人好感度是 ${score}${level ? `（${level}）` : ''}，据此调整语气。`)
       }
     }
+  }
+
+  // 群语气 / 黑话：学群友怎么说话（纯统计，不花 token）
+  try {
+    const gs = await groupStyle(session.chat_type, session.chat_id)
+    const us = await userStyle(session.user_id)
+    const hints = styleHints(gs, us)
+    if (hints.length) parts.push(...hints)
+
+    // 已录入含义的黑话：只挑这次对话里出现过的，别整本塞进去
+    const recent = [userText || ''].concat(gs?.slang || []).join(' ')
+    const gl = await glossaryMap(session.chat_type, session.chat_id, gs?.slang || [])
+    const known = Object.entries(gl)
+    if (known.length) {
+      const used = known.filter(([term]) => recent.includes(term))
+      if (used.length) {
+        parts.push('群黑话约定：' + used.map(([t, m]) => `${t} = ${m}`).join('；') + '。')
+      }
+    }
+  } catch (e) {
+    host.log('debug', '语气统计跳过: ' + e.message)
   }
 
   // 她的生活：让回复带上"此刻在干嘛"（装了就生效，没装不影响）
@@ -528,13 +881,22 @@ serve({
 
     const imgsForStore = imageURLsOf(session)
     const storeText = text || (imgsForStore.length ? '[图片]' : '')
-    if (storeText) {
+    // 命令（/人设、/黑话…）不算聊天语料：存进去会把语气统计带偏，
+    // 而且它们本来也不是"群友在说话"。
+    if (storeText && !session.has_prefix) {
       try {
         await remember(session, 'user', storeText)
         host.log('info', 'H3 remember 完成')
       } catch (err) {
         host.log('warn', '记录失败: ' + err.message)
       }
+    }
+
+
+    // 语气 / 黑话
+    if (/^(语气|黑话)(\s|$)/.test(text)) {
+      await styleCommand(session, text)
+      return { handled: true }
     }
 
     const trig = shouldTrigger(session)
@@ -558,7 +920,7 @@ serve({
   async call_tool({ name, args }) {
     await ensureReady()
     if (name === 'ai.chat') return await toolChat(args)
-    if (name === 'ai.persona') return await toolPersona(args)
+    if (name === 'ai.learn') return await toolLearn(args)
     return { ok: false, error: `未知能力 ${name}` }
   },
 
@@ -622,41 +984,72 @@ async function toolChat(args) {
   return r.ok ? { ok: true, data: { text: r.text } } : { ok: false, error: r.error }
 }
 
-async function toolPersona(args) {
-  const { action, name, content, scope } = args || {}
+// 面板用的"学到什么"接口：看、屏蔽、恢复、管人工词条。
+async function toolLearn(args) {
+  const action = String(args?.action || '')
+  const chatType = String(args?.chat_type || 'group')
+  const chatID = Number(args?.chat_id || 0)
+  const term = String(args?.term || '').trim()
+  const meaning = String(args?.meaning || '').trim()
 
-  switch (action) {
-    case 'list': {
-      const list = await listPersonas()
-      const g = await currentPersonaFor('group')
-      const p = await currentPersonaFor('private')
-      return { ok: true, data: { group: g.name, private: p.name, personas: list.map((x) => x.name) } }
+  if (action === 'groups') {
+    const rows = await learnGroups()
+    return {
+      ok: true,
+      data: {
+        groups: rows.map((r) => ({
+          chat_type: r.chat_type,
+          chat_id: r.chat_id,
+          count: r.n,
+        })),
+      },
     }
-    case 'get': {
-      if (!name) return { ok: false, error: '需要 name' }
-      const p = await getPersona(name)
-      return p ? { ok: true, data: p } : { ok: false, error: `人设 ${name} 不存在` }
-    }
-    case 'set': {
-      if (!name) return { ok: false, error: '需要 name' }
-      const p = await getPersona(name)
-      if (!p) return { ok: false, error: `人设 ${name} 不存在` }
-      const s = scope === 'private' ? 'private' : scope === 'group' ? 'group' : null
-      if (!s) return { ok: false, error: '需要 scope: group 或 private' }
-      await host.sharedSet('ai-chat.persona_' + s, name)
-      return { ok: true, data: { scope: s, current: name } }
-    }
-    case 'save': {
-      if (!name || !content) return { ok: false, error: '需要 name 和 content' }
-      await savePersona(name, content)
-      return { ok: true, data: { saved: name } }
-    }
-    case 'style': {
-      if (!content) return { ok: false, error: '需要 content' }
-      await host.sharedSet('ai-chat.speaking_style', content)
-      return { ok: true, data: { style: content } }
-    }
-    default:
-      return { ok: false, error: `未知 action: ${action}（可用 list/get/set/save/style）` }
   }
+
+  // 注意别用 !chatID：chat_id=0 是合法的（虽然不该出现），
+  // 用 falsy 判断会导致它永远删不掉。
+  if (args?.chat_id === undefined || args?.chat_id === null) {
+    return { ok: false, error: '需要 chat_id' }
+  }
+
+  if (action === 'stats') {
+    const st = await learnStats(chatType, chatID)
+    return { ok: true, data: st }
+  }
+
+  if (action === 'forget') {
+    // 删掉这个会话的所有语料：测试群、不想学的群用这个
+    await db('exec', `DELETE FROM ai_message WHERE chat_type = ? AND chat_id = ?`, [chatType, chatID])
+    await db('exec', `DELETE FROM ai_glossary WHERE chat_type = ? AND chat_id = ?`, [chatType, chatID])
+    await db('exec', `DELETE FROM ai_slang_ban WHERE chat_type = ? AND chat_id = ?`, [chatType, chatID])
+    return { ok: true, data: { forgotten: `${chatType}:${chatID}` } }
+  }
+
+  if (action === 'ban') {
+    if (!term) return { ok: false, error: '需要 term' }
+    await banTerm(chatType, chatID, term)
+    return { ok: true, data: { banned: term } }
+  }
+
+  if (action === 'unban') {
+    if (!term) return { ok: false, error: '需要 term' }
+    const ok = await unbanTerm(chatType, chatID, term)
+    return { ok: true, data: { unbanned: term, existed: ok } }
+  }
+
+  if (action === 'gloss_add') {
+    if (!term || !meaning) return { ok: false, error: '需要 term 和 meaning' }
+    await glossarySave(chatType, chatID, term, meaning)
+    return { ok: true, data: { term, meaning } }
+  }
+
+  if (action === 'gloss_delete') {
+    if (!term) return { ok: false, error: '需要 term' }
+    const ok = await glossaryDelete(chatType, chatID, term)
+    return { ok: true, data: { deleted: term, existed: ok } }
+  }
+
+  return { ok: false, error: `未知 action: ${action}` }
 }
+
+

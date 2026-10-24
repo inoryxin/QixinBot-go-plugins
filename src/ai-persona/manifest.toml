@@ -1,0 +1,86 @@
+id = "ai-persona"
+name = "人设"
+version = "1.0.0"
+apiVersion = "1.x"
+exec = ["node", "app/index.js"]
+description = "管 AI 的系统提示词和人设：说谁、怎么说话、群聊/私聊各用哪套"
+
+# 不是 service：它要接 /人设 命令。
+# （service 插件在分发时被直接跳过，只能被别的插件调能力）
+provides = ["persona.render@1", "persona.manage@1"]
+
+[[capability]]
+name = "persona.render"
+description = "按当前会话拼好系统提示词（AI 聊天插件调用）"
+
+[capability.parameters]
+type = "object"
+
+[capability.parameters.properties.chat_type]
+type = "string"
+
+[[capability]]
+name = "persona.manage"
+description = "人设的增删改查（控制台面板调用）"
+
+[capability.parameters]
+type = "object"
+required = ["action"]
+
+[capability.parameters.properties.action]
+type = "string"
+enum = ["list", "get", "save", "delete", "set", "style"]
+
+[capability.parameters.properties.name]
+type = "string"
+
+[capability.parameters.properties.content]
+type = "string"
+
+[capability.parameters.properties.scope]
+type = "string"
+enum = ["group", "private"]
+
+# ---- 人设管理命令 ----
+[[commands]]
+id = "persona.list"
+usage = "人设"
+description = "查看当前人设和全部人设"
+
+[[commands]]
+id = "persona.use"
+usage = "人设 切换 <名字>"
+description = "本群/本私聊切换到指定人设"
+require_role = "admin"
+
+[[commands]]
+id = "persona.new"
+usage = "人设 新建 <名字> <描述>"
+description = "新建或修改一个人设"
+require_role = "admin"
+
+[[commands]]
+id = "persona.del"
+usage = "人设 删除 <名字>"
+description = "删除一个人设"
+require_role = "owner"
+
+[[settings]]
+key = "system_prompt"
+label = "基础系统提示词"
+type = "text"
+default = "你是一个群聊里的朋友，说话自然、简短、口语化。不要用列表和标题，不要说自己是 AI。"
+hint = "所有人的共同底座；人设是在它上面叠加的"
+
+[[settings]]
+key = "bot_name"
+label = "机器人自称"
+type = "string"
+default = ""
+
+[[settings]]
+key = "speaking_style"
+label = "说话风格补充"
+type = "text"
+default = ""
+hint = "可留空。填了会拼在提示词最后"

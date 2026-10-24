@@ -16,7 +16,7 @@ concurrency = "session"
 # 声明要用工具（AI 工具面板出现在插件详情页）
 use_tools = true
 
-provides = ["ai.chat@1", "ai.persona@1"]
+provides = ["ai.chat@1", "ai.learn@1"]
 
 # AI 聊天要接普通消息，不能要求命令前缀。
 # 这是最容易漏的一条：默认 require_prefix = true，普通消息会被静默拦掉。
@@ -71,23 +71,53 @@ type = "string"
 type = "array"
 
 # ---- 能力：人设切换 ----
+
+# ---- 语气 / 群黑话 ----
+[[commands]]
+id = "ai.style"
+usage = "语气"
+description = "看看我从这个群和你身上学到了什么说话习惯"
+
+[[commands]]
+id = "ai.slang"
+usage = "黑话"
+description = "看这个群学到的高频词和已录入的黑话含义"
+
+[[commands]]
+id = "ai.slang.add"
+usage = "黑话 加 <词> <含义>"
+description = "教机器人一个群黑话的意思"
+require_role = "admin"
+
+[[commands]]
+id = "ai.slang.del"
+usage = "黑话 删 <词>"
+description = "删掉一个黑话词条"
+require_role = "admin"
+
 [[capability]]
-name = "ai.persona"
+name = "ai.learn"
 
 [capability.parameters]
 type = "object"
 required = ["action"]
 
+# 动作：groups（哪些群有语料）/ stats（某群学到了什么）
+#       ban / unban（屏蔽或恢复一个自动学到的词）
+#       gloss_add / gloss_delete（人工词条）
 [capability.parameters.properties.action]
 type = "string"
+enum = ["groups", "stats", "ban", "unban", "gloss_add", "gloss_delete", "forget"]
 
-[capability.parameters.properties.name]
+[capability.parameters.properties.chat_type]
 type = "string"
 
-[capability.parameters.properties.content]
+[capability.parameters.properties.chat_id]
+type = "number"
+
+[capability.parameters.properties.term]
 type = "string"
 
-# ---- 设置 ----
 [[settings]]
 key = "trigger_mode"
 label = "触发方式"
@@ -129,18 +159,6 @@ min = 4
 max = 100
 
 [[settings]]
-key = "system_prompt"
-label = "系统提示词"
-type = "string"
-default = "你是一个群聊里的朋友，说话自然、简短、口语化。不要用列表和标题，不要说自己是大模型。"
-
-[[settings]]
-key = "bot_name"
-label = "机器人自称"
-type = "string"
-default = ""
-
-[[settings]]
 key = "personal_memory"
 label = "个人记忆条数（跨群）"
 type = "number"
@@ -163,22 +181,6 @@ min = 0
 max = 5000
 
 # ---- 共享数据：人设 ----
-[[shared]]
-key = "persona_group"
-description = "群聊人设名"
-default = "群聊"
-
-[[shared]]
-key = "persona_private"
-description = "私聊人设名"
-default = "私聊"
-
-[[shared]]
-key = "speaking_style"
-description = "语气风格描述"
-default = "正常"
-
-# 运行环境放最后（TOML 表规则：后面的 key 属于最近的表）
 [runtime]
 kind = "node"
 version = ">=18"
