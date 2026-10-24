@@ -118,6 +118,9 @@ type = "number"
 [capability.parameters.properties.term]
 type = "string"
 
+[capability.parameters.properties.meaning]
+type = "string"
+
 # ---- 内置人设（装了 ai-persona 插件时自动让位）----
 # hidden = true：不和 ai-persona 的命令在 /help 里重复显示
 [[commands]]

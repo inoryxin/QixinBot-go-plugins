@@ -749,9 +749,16 @@ async function buildMessages(session, userText, extraPrompt, images) {
   // 系统提示词由 ai-persona 插件统一提供（人设、自称、风格都在那边）。
   // 拿不到（没装/挂了）就用一句兜底，别让对话整个失败。
   let personaLine = ''
+  let personaFromPlugin = false
   try {
-    const pr = await host.capability('persona.render', { chat_type: session.chat_type })
-    if (pr?.ok && pr.data?.system) personaLine = pr.data.system
+    const pr = await host.capability('persona.render', {
+      chat_type: session.chat_type,
+      chat_id: session.chat_id,
+    })
+    if (pr?.ok && pr.data?.system) {
+      personaLine = pr.data.system
+      personaFromPlugin = true
+    }
   } catch (e) {
     host.log('debug', 'persona.render 不可用: ' + e.message)
   }
@@ -778,9 +785,11 @@ async function buildMessages(session, userText, extraPrompt, images) {
     }
   }
 
-  // 群语气 / 黑话：学群友怎么说话（纯统计，不花 token）
+  // 群语气 / 黑话：**人设插件在场时由它拼**（它拿得到同一份数据），
+  // 这里只在没有插件时兜底，避免同一段提示词出现两次。
   try {
-    const gs = await groupStyle(session.chat_type, session.chat_id)
+    if (!personaFromPlugin) {
+      const gs = await groupStyle(session.chat_type, session.chat_id)
     const us = await userStyle(session.user_id)
     const hints = styleHints(gs, us)
     if (hints.length) parts.push(...hints)
@@ -794,6 +803,7 @@ async function buildMessages(session, userText, extraPrompt, images) {
       if (used.length) {
         parts.push('群黑话约定：' + used.map(([t, m]) => `${t} = ${m}`).join('；') + '。')
       }
+    }
     }
   } catch (e) {
     host.log('debug', '语气统计跳过: ' + e.message)
