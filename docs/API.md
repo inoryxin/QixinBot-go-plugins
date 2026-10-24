@@ -44,7 +44,7 @@ apiVersion = "2.x"   # 主版本 2 的框架才会加载
 | 东西 | 风险 |
 |---|---|
 | 日志格式 | 随时改进，插件别解析自己的 `host.log` 输出 |
-| `GET /api/trusted-keys` | 返回 `{keys:[{key,fingerprint,source}], allow_unsigned}` |
+| `GET /api/trusted-keys` | 返回 `{keys:[{key,fingerprint,source}], allow_unsigned}`；`source` = `official` / `config` / `added` |
 | `POST /api/trusted-keys` | 表单 `key=`，立刻生效（落盘 `data/trusted-keys.json`） |
 | `POST /api/trusted-keys/delete` | 表单 `key=`，只能删热加的（config 里的会报错提示改文件） |
 | 插件上传 | `POST /api/plugins/upload` **走签名校验**（和投放区安装同一套逻辑） |
