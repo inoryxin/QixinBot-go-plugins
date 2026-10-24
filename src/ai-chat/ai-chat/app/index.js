@@ -905,6 +905,9 @@ async function buildMessages(session, userText, extraPrompt, images) {
     parts.push(`你此刻的状态：${life.text}。回复必须符合这个状态——在忙就短一点，睡着被叫醒就迷糊一点。`)
   }
 
+  // 时间感：让话题符合时段（中午聊吃啥、晚上聊下班，别半夜问午饭）
+  parts.push(timeHint())
+
   if (extraPrompt) parts.push(extraPrompt)
 
   if (userText) {
@@ -1138,6 +1141,28 @@ async function memoryCommand(session, text) {
   }
 
   await reply('可用：/记忆 看 · /记忆 清空（管理员）· /记忆 删 <关键词>（管理员）')
+}
+
+// ---------------------------------------------------------------- 时间感
+
+// 让模型知道现在几点、该聊什么。不然它会在半夜问"中午吃了吗"。
+function timeHint() {
+  const d = new Date()
+  const h = d.getHours()
+  const mm = String(d.getMinutes()).padStart(2, '0')
+  const wd = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][d.getDay()]
+  const now = `${wd} ${String(h).padStart(2, '0')}:${mm}`
+
+  let topic = ''
+  if (h >= 5 && h < 9) topic = '早上：可以聊起床、早餐、通勤；别提午饭和晚饭'
+  else if (h >= 9 && h < 11) topic = '上午：聊上班/上课；别问睡没睡'
+  else if (h >= 11 && h < 13) topic = '中午：聊午饭吃什么、午休'
+  else if (h >= 13 && h < 17) topic = '下午：可以聊犯困、摸鱼、下午茶；别问午饭吃了没'
+  else if (h >= 17 && h < 19) topic = '傍晚：聊下班、晚饭'
+  else if (h >= 19 && h < 23) topic = '晚上：聊晚饭、休息、追剧打游戏；别问午饭'
+  else topic = '深夜：这个点该睡了；别聊午饭，别显得精神抖擞'
+
+  return `现在是 ${now}。${topic}。对方问时间就按这个答。`
 }
 
 // ---------------------------------------------------------------- 分段发送

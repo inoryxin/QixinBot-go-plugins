@@ -221,6 +221,7 @@ key = "trigger_mode"
 label = "触发方式"
 type = "select"
 options = ["mention", "always", "prob"]
+option_labels = ["只在@我时", "每条都回", "按概率插话"]
 default = "mention"
 help = "mention=只在@时回复；always=每条都回；prob=按概率"
 

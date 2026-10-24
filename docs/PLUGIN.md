@@ -419,6 +419,23 @@ name = "weather_query"
 description = "查询城市当前天气。用户问天气、气温、下不下雨时调用。"
 parameters = { type = "object", properties = { city = { type = "string" } }, required = ["city"] }
 
+### 设置项：下拉框显示中文
+
+`options` 是**存的值**，`option_labels` 是**给人看的**（一一对应）：
+
+```toml
+[[settings]]
+key = "trigger_mode"
+label = "触发方式"
+type = "select"
+options = ["mention", "always", "prob"]
+option_labels = ["只在@我时", "每条都回", "按概率插话"]
+default = "mention"
+```
+
+不写 `option_labels` 就直接显示 `options`（英文）。**存的还是英文值**，
+所以代码里的判断不用改。
+
 [[settings]]
 key = "unit"
 label = "温度单位"
