@@ -809,6 +809,9 @@ async function buildMessages(session, userText, extraPrompt, images) {
     host.log('debug', '语气统计跳过: ' + e.message)
   }
 
+  // 聊天风格：真人聊天很少打句号，短句、用空格隔开
+  parts.push('回复像手机聊天：短句，尽量别用句号，用空格或换行断开，别写成文章。')
+
   // 她的生活：让回复带上"此刻在干嘛"（装了就生效，没装不影响）
   const life = await optionalCapability('life.now')
   host.log('debug', 'buildMessages life=' + (life?.text || '无'))
@@ -961,51 +964,59 @@ function shouldTrigger(session) {
 
 // ---------------------------------------------------------------- 分段发送
 
-// 把一条长回复切成几条短消息，像人在聊天那样一句一句发。
-// 切分顺序：换行 → 句末标点 → 长度硬切；超过上限就合并尾部，避免刷屏。
-function splitReply(text, maxChars, maxParts) {
-  const max = Math.max(10, maxChars | 0 || 40)
+// 真人聊天一般不打句号，短句，用空格或换行隔开。
+// 所以切分**不靠标点**：优先在空格/换行处断，没有就按长度切。
+function splitReply(text, maxChars, wantParts) {
+  const s = String(text).trim()
+  if (!s) return []
+
+  const max = Math.max(8, maxChars | 0 || 30)
+  const n = Math.max(1, Math.min(5, wantParts | 0 || 1))
+  if (n === 1 || s.length <= max) return [s]
+
   const parts = []
+  let rest = s
+  let left = n
 
-  for (const para of String(text).split(/\n+/)) {
-    let rest = para.trim()
-    while (rest.length > max) {
-      // 优先在句末标点断（读起来自然），实在没有才退到逗号，最后才硬切
-      const sentence = ['。', '！', '？', '!', '?', '；', ';']
-      const clause = ['，', ',', '、']
-      const pick = (marks, minRatio) => {
-        let cut = -1
-        for (const ch of marks) {
-          const i = rest.lastIndexOf(ch, max)
-          if (i > cut) cut = i
-        }
-        return cut >= max * minRatio ? cut + 1 : -1
-      }
+  while (left > 1 && rest.length > max * 0.6) {
+    const target = Math.min(max, Math.ceil(rest.length / left))
+    let cut = -1
 
-      // 句末标点只要在范围内就用（哪怕只有十来个字，也像人说完一句停顿）
-      let cut = pick(sentence, 0.15)
-      if (cut < 0) cut = pick(clause, 0.5)
-      if (cut < 0) cut = max
-
-      parts.push(rest.slice(0, cut).trim())
-      rest = rest.slice(cut).trim()
+    // 在目标位置附近找空白（空格/换行）当断点，最多偏离 40%
+    const window = Math.floor(target * 0.4)
+    for (let d = 0; d <= window; d++) {
+      const back = target - d
+      const fwd = target + d
+      if (back > 0 && /\s/.test(rest[back - 1])) { cut = back; break }
+      if (fwd < rest.length && /\s/.test(rest[fwd - 1])) { cut = fwd; break }
     }
-    if (rest) parts.push(rest)
-  }
+    if (cut <= 0) cut = target // 没有空白就按长度硬切
 
-  if (parts.length > maxParts && maxParts > 0) {
-    const head = parts.slice(0, maxParts - 1)
-    head.push(parts.slice(maxParts - 1).join(''))
-    return head
+    parts.push(rest.slice(0, cut).trim())
+    rest = rest.slice(cut).trim()
+    left--
   }
-  return parts
+  if (rest) parts.push(rest)
+  return parts.filter(Boolean)
 }
 
-// 逐条发；两条之间停顿一下（模拟打字），太密会被风控
+// 按设置里的概率决定这次分几条
+function targetParts() {
+  const weights = [1, 2, 3, 4, 5].map((i) => Math.max(0, Number(settings['split_pct_' + i]) || 0))
+  const total = weights.reduce((a, b) => a + b, 0)
+  if (total <= 0) return 1
+  let r = Math.random() * total
+  for (let i = 0; i < weights.length; i++) {
+    r -= weights[i]
+    if (r < 0) return i + 1
+  }
+  return 1
+}
+
 async function sendSplit(chat, text) {
   const enabled = settings.split_enabled !== false
   const parts = enabled
-    ? splitReply(text, Number(settings.split_max_chars) || 40, Number(settings.split_max_parts) || 4)
+    ? splitReply(text, Number(settings.split_max_chars) || 30, targetParts())
     : [text]
 
   for (let i = 0; i < parts.length; i++) {

@@ -244,7 +244,7 @@ default = true
 key = "split_max_chars"
 label = "每段最多多少字"
 type = "number"
-default = 40
+default = 30
 
 [[settings]]
 key = "split_delay_ms"
@@ -252,11 +252,36 @@ label = "段与段之间停顿（毫秒）"
 type = "number"
 default = 500
 
+# 分成几条的概率（相对权重，不用凑满 100）
 [[settings]]
-key = "split_max_parts"
-label = "最多分几条（超出合并尾部）"
+key = "split_pct_1"
+label = "发 1 条的概率"
 type = "number"
-default = 4
+default = 20
+
+[[settings]]
+key = "split_pct_2"
+label = "发 2 条的概率"
+type = "number"
+default = 40
+
+[[settings]]
+key = "split_pct_3"
+label = "发 3 条的概率"
+type = "number"
+default = 25
+
+[[settings]]
+key = "split_pct_4"
+label = "发 4 条的概率"
+type = "number"
+default = 10
+
+[[settings]]
+key = "split_pct_5"
+label = "发 5 条的概率"
+type = "number"
+default = 5
 
 [[settings]]
 key = "reply_typing"
