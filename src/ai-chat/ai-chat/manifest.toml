@@ -94,6 +94,29 @@ type = "string"
 type = "string"
 enum = ["group", "private"]
 
+# ---- 语气 / 群黑话 ----
+[[commands]]
+id = "ai.style"
+usage = "语气"
+description = "看看我从这个群和你身上学到了什么说话习惯"
+
+[[commands]]
+id = "ai.slang"
+usage = "黑话"
+description = "看这个群学到的高频词和已录入的黑话含义"
+
+[[commands]]
+id = "ai.slang.add"
+usage = "黑话 加 <词> <含义>"
+description = "教机器人一个群黑话的意思"
+require_role = "admin"
+
+[[commands]]
+id = "ai.slang.del"
+usage = "黑话 删 <词>"
+description = "删掉一个黑话词条"
+require_role = "admin"
+
 # ---- 设置 ----
 # ---- 人设管理 ----
 [[commands]]
