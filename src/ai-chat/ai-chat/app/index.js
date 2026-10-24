@@ -142,13 +142,16 @@ async function remember(session, role, content) {
 }
 
 // 个人记忆：这个 QQ 号说过的话（跨群跨私聊）
-async function personalHistory(userID, limit) {
+// 个人记忆 = 这个 QQ 在**别的会话**里说过的话。
+// 跟 QQ 走，不跟群走：群里聊过的，私聊能接着聊。
+async function personalHistory(userID, limit, exclude = {}) {
   if (!userID || limit <= 0) return []
   const r = await db('all',
-    `SELECT content, ts FROM ai_message
+    `SELECT content, ts, chat_type, chat_id FROM ai_message
      WHERE user_id = ? AND role = 'user'
+       AND NOT (chat_type = ? AND chat_id = ?)
      ORDER BY id DESC LIMIT ?`,
-    [userID, limit],
+    [userID, exclude.chat_type || '', exclude.chat_id || 0, limit],
   )
   return (r.rows || []).reverse()
 }
@@ -834,17 +837,25 @@ async function buildMessages(session, userText, extraPrompt, images) {
 
   // ① 个人记忆：这个人以前说过什么（跨群）
   const personalLimit = Number(settings.personal_memory) || 200
-  const personal = await personalHistory(session.user_id, Math.min(personalLimit, 10))
+  const personal = await personalHistory(session.user_id, Math.min(personalLimit, 10), {
+    chat_type: session.chat_type,
+    chat_id: session.chat_id,
+  })
   if (personal.length) {
-    const lines = personal.map((m) => '- ' + m.content.replace(/\n/g, ' ')).join('\n')
+    const lines = personal
+      .map((m) => `- [${m.chat_type === 'private' ? '私聊' : '群'}] ${m.content.replace(/\n/g, ' ')}`)
+      .join('\n')
     messages.push({
       role: 'system',
-      content: `关于当前说话的人，他以前说过：\n${lines}`,
+      content:
+        `关于当前说话的人（同一个 QQ，可能来自别的群/私聊），他最近说过：\n${lines}\n` +
+        '如果聊到相关话题可以自然接上，但别主动抖机灵复述。',
     })
   }
 
   // ② 群上下文：最近这段对话
-  const ctxSize = Math.max(4, Number(settings.context_size) || 20)
+  // 群里只带最近 N 条（默认 20）：带整段历史既费 token 又容易跑题
+  const ctxSize = Math.max(4, Math.min(50, Number(settings.context_size) || 20))
   const history = await chatHistory(session.chat_type, session.chat_id, ctxSize)
   const names = await nicknamesOf(history.map((m) => m.user_id))
 
@@ -1230,16 +1241,8 @@ serve({
 
     const imgsForStore = imageURLsOf(session)
     const storeText = text || (imgsForStore.length ? '[图片]' : '')
-    // 命令（/人设、/黑话…）不算聊天语料：存进去会把语气统计带偏，
-    // 而且它们本来也不是"群友在说话"。
-    if (storeText && !session.has_prefix) {
-      try {
-        await remember(session, 'user', storeText)
-        host.log('info', 'H3 remember 完成')
-      } catch (err) {
-        host.log('warn', '记录失败: ' + err.message)
-      }
-    }
+    // 记忆统一由 observe_message 写（那条路径能看到所有消息，
+    // 包括被 keyword-reply 之类抢先认领的），这里不再重复存。
 
 
     // 人设命令：装了 ai-persona 就让位（它的人设功能更完整），
@@ -1278,6 +1281,24 @@ serve({
       host.log('error', '回复失败: ' + err.message)
     }
     return { handled: true }
+  },
+
+  // 框架把每条消息都抄一份过来（即使别的插件已认领）。
+  // 只存文字/图片占位，命令不存（前缀消息不是聊天语料）。
+  async observe_message({ session }) {
+    try {
+      await ensureReady()
+      if (session.has_prefix) return {}
+      const text = (session.text || '').trim()
+      const imgs = imageURLsOf(session)
+      const content = text || (imgs.length ? '[图片]' : '')
+      if (!content) return {}
+      await remember(session, 'user', content)
+      return {}
+    } catch (e) {
+      host.log('debug', 'observe 记录失败: ' + e.message)
+      return {}
+    }
   },
 
   async call_tool({ name, args }) {

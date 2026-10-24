@@ -16,6 +16,9 @@ concurrency = "session"
 # 声明要用工具（AI 工具面板出现在插件详情页）
 use_tools = true
 
+# 所有消息都抄我一份（别人认领的也要）：记忆靠这个
+observe = true
+
 provides = ["ai.chat@1", "ai.learn@1", "ai.memory@1"]
 
 # AI 聊天要接普通消息，不能要求命令前缀。

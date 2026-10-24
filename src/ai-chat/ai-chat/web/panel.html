@@ -214,13 +214,14 @@
       const d = await call(Object.assign({ action: 'recent', limit: 30 }, c))
       const rows = d.messages || []
       if (!rows.length) { $('mm-body').innerHTML = '<p class="muted">（空）</p>'; return }
-      let h = '<table><tbody>'
+      let h = '<details class="hg" open><summary><span class="arrow">▶</span><strong>最近 ' + rows.length + ' 条</strong></summary>' +
+              '<div class="body" style="max-height:320px;overflow:auto"><table><tbody>'
       for (const m of rows) {
         const who = m.role === 'user' ? '你' : '我'
         h += '<tr><td style="width:44px">' + who + '</td><td>' + esc(String(m.content).slice(0, 80)) +
              '</td><td style="width:56px"><a href="#" onclick="event.preventDefault();mmDel(' + m.id + ')">删除</a></td></tr>'
       }
-      h += '</tbody></table>'
+      h += '</tbody></table></div></details>'
       h += '<div class="row" style="margin-top:8px">' +
            '<input type="text" id="mm-kw" placeholder="含关键词的删掉" style="width:220px">' +
            '<button onclick="mmClearKw()">删含这个词的</button></div>'

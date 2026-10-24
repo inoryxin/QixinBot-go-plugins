@@ -993,6 +993,31 @@ WebUI 的 `GET /api/capabilities` 能看到每个能力的提供者列表和顺�
 
 ---
 
+## 6.1a 观察消息：`observe = true`
+
+**问题**：AI 聊天是 `last = true` 的兜底插件。前面被 `keyword-reply` 认领的消息
+它根本收不到——"群里说过的话"就进不了记忆。
+
+**解法**：声明 `observe = true`，框架会在分发结束后**把每条消息抄一份**给你，
+不管是谁处理的、处理没处理：
+
+```toml
+observe = true
+```
+
+```js
+async observe_message({ session }) {
+  // 只记不发；返回值被忽略，不会影响回复
+  await host.storage_set('last', session.text)
+  return {}
+}
+```
+
+**规则**：
+- 只读场景用（记忆、统计、审计），**别在里面发消息**——它不是回复通道
+- 异步调用，**失败不影响用户收到的回复**
+- 带命令前缀的消息也会抄过来，自己判断要不要（`session.has_prefix`）
+
 ## 6.2 共享数据
 
 插件可以把自己的一部分数据托管给框架，其他插件读。

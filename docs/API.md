@@ -44,6 +44,7 @@ apiVersion = "2.x"   # 主版本 2 的框架才会加载
 | 东西 | 风险 |
 |---|---|
 | 日志格式 | 随时改进，插件别解析自己的 `host.log` 输出 |
+| `plugin.observe_message` | 声明 `observe = true` 后，每条消息都会抄一份；返回值忽略 |
 | `GET /api/trusted-keys` | 返回 `{keys:[{key,fingerprint,source}], allow_unsigned}`；`source` = `official` / `config` / `added` |
 | `POST /api/trusted-keys` | 表单 `key=`，立刻生效（落盘 `data/trusted-keys.json`） |
 | `POST /api/trusted-keys/delete` | 表单 `key=`，只能删热加的（config 里的会报错提示改文件） |
