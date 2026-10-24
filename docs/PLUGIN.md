@@ -2782,6 +2782,30 @@ await host.reply(chatOf(session), '收到', session.message_id) // 引用回复
 - `host.reply` 可能失败（限频、禁言），要 catch。
 - 工具返回 `{ ok: false, error }`，不抛。
 
+### 7.3a 自带页面：`web/panel.html`
+
+插件的业务页面**放在插件里**，不要指望框架给你单独做一个页面。
+
+```
+dist/my-plugin/web/panel.html    ← 直接内联到插件详情页（/plugin/<id>/）
+```
+
+**能干什么**：
+
+- 用同源 `fetch` 调**任何**已声明能力：`POST /api/capabilities/call`
+  （表单字段 `name` + `args`）
+- 用页面里已有的 CSS 类：`form-box` / `table` / `tag` / `muted` / `primary` / `danger`
+
+**不要干什么**：
+
+- 别把业务数据做进框架的 Go 页面里——框架只提供通用容器；
+  插件换存储、换结构时，框架页面就成了要跟着改的死代码。
+- 别引用外部 CDN（离线部署会白屏）。
+
+**反例**：曾经把「人设管理」做成了框架页面 `/personas`，
+结果它直接调 `ai.persona` 能力、还得跟着插件改。现在挪回
+`ai-chat/web/panel.html`，框架侧一行代码都不留。
+
 ### 7.4 日志
 
 ```js
