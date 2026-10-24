@@ -218,6 +218,17 @@ async function searchKnowledge(text) {
 
 // ---------------------------------------------------------------- 好感度
 
+// 可选能力探测：插件没装/调用失败都返回 null，绝不影响主流程。
+async function optionalCapability(name, args = {}) {
+  try {
+    const r = await host.capability(name, args)
+    if (!r || r.ok === false) return null
+    return r.data ?? null
+  } catch {
+    return null
+  }
+}
+
 // 可选依赖：好感度插件装了就用，没装返回 null
 async function affinityOf(userID) {
   if (!settings.use_affinity || !userID) return null
@@ -283,6 +294,13 @@ async function buildMessages(session, userText, extraPrompt, images) {
         parts.push(`你对当前说话的人好感度是 ${score}${level ? `（${level}）` : ''}，据此调整语气。`)
       }
     }
+  }
+
+  // 她的生活：让回复带上"此刻在干嘛"（装了就生效，没装不影响）
+  const life = await optionalCapability('life.now')
+  host.log('debug', 'buildMessages life=' + (life?.text || '无'))
+  if (life && life.text) {
+    parts.push(`你此刻的状态：${life.text}。回复必须符合这个状态——在忙就短一点，睡着被叫醒就迷糊一点。`)
   }
 
   if (extraPrompt) parts.push(extraPrompt)
