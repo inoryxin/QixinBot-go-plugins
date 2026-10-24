@@ -1047,19 +1047,22 @@ function shouldTrigger(session) {
   // 纯图片消息 text 是空的，但仍然是消息，不能在这里被丢掉
   const hasImage = imageURLsOf(session).length > 0
   if (!text && !hasImage) return false
+  // 私聊：每条都回
   if (session.chat_type === 'private') return true
-  if (session.mentioned) return true
 
-  const mode = settings.trigger_mode || 'mention'
-  if (mode === 'mention') return false
-  if (mode === 'always') return true
+  // 被 @：按设置必回（和"随机插话"互不排斥）
+  if (session.mentioned) return settings.reply_on_mention !== false
+
+  // 没 @ 的群聊：随机插话（0 = 不插话）
+  const chance = Math.max(0, Math.min(100,
+    Number(settings.group_chance_pct ?? settings.trigger_prob) || 0))
+  if (chance <= 0) return false
 
   const key = session.chat_type + ':' + session.chat_id
   const cd = Math.max(0, Number(settings.cooldown) || 0) * 1000
   if (cd > 0 && lastTrigger.has(key) && Date.now() - lastTrigger.get(key) < cd) return false
 
-  const p = Math.max(0, Math.min(100, Number(settings.trigger_prob) || 0))
-  return Math.random() * 100 < p
+  return Math.random() * 100 < chance
 }
 
 // ---------------------------------------------------------------- 回复
