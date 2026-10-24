@@ -235,6 +235,30 @@ type = "boolean"
 default = true
 
 [[settings]]
+key = "split_enabled"
+label = "分段发送（像真人一句一句发）"
+type = "bool"
+default = true
+
+[[settings]]
+key = "split_max_chars"
+label = "每段最多多少字"
+type = "number"
+default = 40
+
+[[settings]]
+key = "split_delay_ms"
+label = "段与段之间停顿（毫秒）"
+type = "number"
+default = 500
+
+[[settings]]
+key = "split_max_parts"
+label = "最多分几条（超出合并尾部）"
+type = "number"
+default = 4
+
+[[settings]]
 key = "reply_typing"
 label = "模拟打字延迟（毫秒）"
 type = "number"

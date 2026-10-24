@@ -959,6 +959,65 @@ function shouldTrigger(session) {
 
 // ---------------------------------------------------------------- 回复
 
+// ---------------------------------------------------------------- 分段发送
+
+// 把一条长回复切成几条短消息，像人在聊天那样一句一句发。
+// 切分顺序：换行 → 句末标点 → 长度硬切；超过上限就合并尾部，避免刷屏。
+function splitReply(text, maxChars, maxParts) {
+  const max = Math.max(10, maxChars | 0 || 40)
+  const parts = []
+
+  for (const para of String(text).split(/\n+/)) {
+    let rest = para.trim()
+    while (rest.length > max) {
+      // 优先在句末标点断（读起来自然），实在没有才退到逗号，最后才硬切
+      const sentence = ['。', '！', '？', '!', '?', '；', ';']
+      const clause = ['，', ',', '、']
+      const pick = (marks, minRatio) => {
+        let cut = -1
+        for (const ch of marks) {
+          const i = rest.lastIndexOf(ch, max)
+          if (i > cut) cut = i
+        }
+        return cut >= max * minRatio ? cut + 1 : -1
+      }
+
+      // 句末标点只要在范围内就用（哪怕只有十来个字，也像人说完一句停顿）
+      let cut = pick(sentence, 0.15)
+      if (cut < 0) cut = pick(clause, 0.5)
+      if (cut < 0) cut = max
+
+      parts.push(rest.slice(0, cut).trim())
+      rest = rest.slice(cut).trim()
+    }
+    if (rest) parts.push(rest)
+  }
+
+  if (parts.length > maxParts && maxParts > 0) {
+    const head = parts.slice(0, maxParts - 1)
+    head.push(parts.slice(maxParts - 1).join(''))
+    return head
+  }
+  return parts
+}
+
+// 逐条发；两条之间停顿一下（模拟打字），太密会被风控
+async function sendSplit(chat, text) {
+  const enabled = settings.split_enabled !== false
+  const parts = enabled
+    ? splitReply(text, Number(settings.split_max_chars) || 40, Number(settings.split_max_parts) || 4)
+    : [text]
+
+  for (let i = 0; i < parts.length; i++) {
+    if (i > 0) {
+      const gap = Math.max(120, Math.min(3000, Number(settings.split_delay_ms) || 500))
+      await new Promise((res) => setTimeout(res, gap))
+    }
+    await host.reply(chat, parts[i])
+  }
+  return parts.length
+}
+
 async function respond(session, userText, extraPrompt, images) {
   const t0 = Date.now()
   host.log('info', `respond 开始 images=${(images || []).length}`)
@@ -999,8 +1058,8 @@ async function respond(session, userText, extraPrompt, images) {
   if (delay > 0) await new Promise((res) => setTimeout(res, Math.min(delay, 3000)))
 
   try {
-    await host.reply(chatOf(session), text)
-    host.log('info', `respond 已发送 耗时=${Date.now() - t0}`)
+    const n = await sendSplit(chatOf(session), text)
+    host.log('info', `respond 已发送 parts=${n} 耗时=${Date.now() - t0}`)
   } catch (err) {
     host.log('error', '发送失败: ' + err.message)
     return { ok: false, error: err.message }
