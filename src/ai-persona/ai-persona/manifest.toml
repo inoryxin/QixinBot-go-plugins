@@ -86,20 +86,20 @@ default = ""
 
 [[settings]]
 key = "system_prompt"
-label = "基础系统提示词"
+label = "基础提示词（所有人设共用）"
 type = "text"
 default = "你是一个群聊里的朋友，说话自然、简短、口语化。不要用列表和标题，不要说自己是 AI。"
-hint = "所有人的共同底座；人设是在它上面叠加的"
+hint = "所有场景、所有人设都先吃这段；具体人设在下面「人设列表」里选"
 
 [[settings]]
 key = "bot_name"
-label = "机器人自称"
+label = "机器人自称（共用）"
 type = "string"
 default = ""
 
 [[settings]]
 key = "speaking_style"
-label = "说话风格补充"
+label = "说话风格补充（共用）"
 type = "text"
 default = ""
-hint = "可留空。填了会拼在提示词最后"
+hint = "可留空。这部分对所有人设都生效"
