@@ -611,6 +611,7 @@ async function call() {
 | `usage` | 必填，**第一个词就是触发词；不要写 `/`**，前缀由框架统一加 |
 | `description` | 一句话 |
 | `hidden` | 不进 `/help` |
+| — | **别和内置命令撞名**：`/help`、`/plugins` 是框架处理的，插件同名命令永远不会触发 |
 | `aliases` | 别名 |
 | `allow_users` / `allow_groups` / `require_role` | 权限默认值（可被 WebUI 覆盖） |
 
