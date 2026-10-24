@@ -1,0 +1,167 @@
+<!-- AI 聊天的扩展面板：key 说明 + 人设管理 -->
+<div style="margin-top:12px;padding:12px 14px;border:1px solid var(--border);border-radius:8px;background:var(--hover)">
+  <p style="margin:0 0 8px 0"><strong>这个插件本身不存 API Key。</strong></p>
+  <p class="muted" style="margin:0 0 6px 0">
+    它通过能力 <code>llm.chat</code> 调用 LLM，Key 配置在
+    <a href="/plugin/llm/">LLM 服务</a> 插件的设置页里。
+  </p>
+  <p class="muted" style="margin:0 0 6px 0">
+    DeepSeek 的填法：地址 <code>https://api.deepseek.com/v1</code>，模型 <code>deepseek-chat</code>。
+  </p>
+  <p class="muted" style="margin:0">
+    记忆存在 <code>db.sqlite</code>（SQLite 存储插件），人设切换走 <code>ai.persona</code> 能力。
+  </p>
+</div>
+
+<div style="margin-top:12px;padding:10px 14px;border:1px solid var(--border);border-radius:8px;background:var(--hover)">
+  <p class="muted" style="margin:0">
+    <strong>人设</strong>：装了「人设」插件就在它的页面里改（支持多人设切换）。
+    没装的话用本页上面的「系统提示词 / 自称 / 说话风格」，或者用 <code>/人设</code> 命令。
+  </p>
+</div>
+
+<!-- 学到的东西：看得见、能删 -->
+<h2 style="margin-top:24px">学到的东西</h2>
+<p class="muted" style="margin:0 0 10px">
+  这些是从群聊里自动统计出来的说话习惯和高频词（群黑话）。觉得哪个词不适合就让 AI 学，点 ✕ 屏蔽掉。
+</p>
+
+<div class="row" style="margin-bottom:10px">
+  <select id="lg-group" style="width:260px"></select>
+  <button onclick="lgLoad()">刷新</button>
+  <button class="danger" onclick="lgForget()">删掉这个群的语料</button>
+</div>
+<div id="lg-body" class="muted">加载中…</div>
+
+<script>
+(function(){
+  function $(id){ return document.getElementById(id) }
+  function esc(t){ return String(t).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])) }
+
+  async function call(args){
+    const body = new FormData()
+    body.set('name', 'ai.learn')
+    body.set('args', JSON.stringify(args))
+    const r = await fetch('/api/capabilities/call', { method: 'POST', body })
+    const j = await r.json()
+    if (!j.ok) throw new Error(j.error || '调用失败')
+    const inner = j.result || {}
+    if (inner.ok === false) throw new Error(inner.error || '插件返回失败')
+    return inner.data || {}
+  }
+
+  function curGroup(){
+    const [t, id] = ($('lg-group').value || '').split(':')
+    return { chat_type: t, chat_id: Number(id) }
+  }
+
+  window.lgLoad = async function(){
+    const g = curGroup()
+    if (!g.chat_id) { $('lg-body').textContent = '没有可选的群（还没有聊天记录）'; return }
+    try {
+      const d = await call(Object.assign({ action: 'stats' }, g))
+      render(d)
+    } catch (e) { $('lg-body').textContent = '读取失败：' + e.message }
+  }
+
+  window.lgForget = async function(){
+    const g = curGroup()
+    if (!g.chat_id) return
+    if (!confirm('删掉 ' + g.chat_type + ' ' + g.chat_id + ' 的全部聊天记录和学到的词？\n（只影响 AI 的记忆，不影响群消息本身）')) return
+    await call(Object.assign({ action: 'forget' }, g))
+    init()
+  }
+
+  window.lgBan = async function(term){
+    const g = curGroup()
+    await call(Object.assign({ action: 'ban', term }, g))
+    lgLoad()
+  }
+  window.lgUnban = async function(term){
+    const g = curGroup()
+    await call(Object.assign({ action: 'unban', term }, g))
+    lgLoad()
+  }
+  window.lgGlossDel = async function(term){
+    const g = curGroup()
+    if (!confirm('删除词条「' + term + '」？')) return
+    await call(Object.assign({ action: 'gloss_delete', term }, g))
+    lgLoad()
+  }
+  window.lgGlossAdd = async function(){
+    const term = $('lg-term').value.trim()
+    const meaning = $('lg-meaning').value.trim()
+    if (!term || !meaning) return
+    const g = curGroup()
+    await call(Object.assign({ action: 'gloss_add', term, meaning }, g))
+    $('lg-term').value = ''; $('lg-meaning').value = ''
+    lgLoad()
+  }
+
+  function chips(words, kind){
+    if (!words.length) return '<span class="muted">（无）</span>'
+    return words.map(w => {
+      const action = kind === 'ban'
+        ? "lgBan('" + esc(w) + "')"
+        : "lgUnban('" + esc(w) + "')"
+      const mark = kind === 'ban' ? '✕' : '↺'
+      const title = kind === 'ban' ? '屏蔽这个词' : '恢复这个词'
+      return '<span class="tag" style="margin:0 6px 6px 0">' + esc(w) +
+        ' <a href="#" title="' + title + '" onclick="event.preventDefault();' + action + '" style="text-decoration:none">' + mark + '</a></span>'
+    }).join('')
+  }
+
+  function render(d){
+    const g = d.group
+    if (!g) { $('lg-body').innerHTML = '<p class="muted">这个群的消息还太少（不到 10 条），还没法学。</p>'; return }
+
+    let h = ''
+    h += '<p style="margin:0 0 8px">统计自 <strong>' + g.n + '</strong> 条消息：平均 <strong>' + g.avg_len +
+         '</strong> 字 · 表情 ' + Math.round(g.emoji_rate * 100) + '% · 语气词 ' + Math.round(g.particle_rate * 100) + '%</p>'
+
+    h += '<p style="margin:10px 0 4px"><strong>高频词（自动学的）</strong>　<span class="muted">点 ✕ 屏蔽</span></p>'
+    h += '<div>' + chips(g.slang || [], 'ban') + '</div>'
+
+    if ((d.banned || []).length) {
+      h += '<p style="margin:10px 0 4px"><strong>已屏蔽</strong>　<span class="muted">点 ↺ 恢复</span></p>'
+      h += '<div>' + chips(d.banned, 'unban') + '</div>'
+    }
+
+    h += '<p style="margin:14px 0 4px"><strong>人工词条</strong>（教给 AI 的含义）</p>'
+    if ((d.glossary || []).length) {
+      h += '<table><tbody>'
+      for (const it of d.glossary) {
+        h += '<tr><td style="width:120px"><code>' + esc(it.term) + '</code></td><td>' + esc(it.meaning) +
+             '</td><td style="width:60px"><a href="#" onclick="event.preventDefault();lgGlossDel(\'' + esc(it.term) + '\')">删除</a></td></tr>'
+      }
+      h += '</tbody></table>'
+    } else {
+      h += '<p class="muted" style="margin:0 0 8px">（无）</p>'
+    }
+    h += '<div class="row" style="margin-top:8px">' +
+         '<input type="text" id="lg-term" placeholder="词" style="width:120px">' +
+         '<input type="text" id="lg-meaning" placeholder="含义" style="width:240px">' +
+         '<button onclick="lgGlossAdd()">添加词条</button></div>'
+
+    $('lg-body').innerHTML = h
+  }
+
+  async function init(){
+    try {
+      const d = await call({ action: 'groups' })
+      const sel = $('lg-group')
+      sel.innerHTML = ''
+      for (const g of d.groups || []) {
+        const opt = document.createElement('option')
+        opt.value = g.chat_type + ':' + g.chat_id
+        opt.textContent = g.chat_type + ' ' + g.chat_id + '（' + g.count + ' 条）'
+        sel.appendChild(opt)
+      }
+      if ((d.groups || []).length) lgLoad()
+      else $('lg-body').textContent = '还没有聊天记录。'
+    } catch (e) { $('lg-body').textContent = '读取失败：' + e.message }
+  }
+
+  init()
+})()
+</script>
