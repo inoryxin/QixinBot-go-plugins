@@ -5,6 +5,9 @@ apiVersion = "1.x"
 exec = ["node", "app/index.js"]
 description = "每日运势抽签（图片），支持 23 个主题，每人每天一次"
 
+# 低频插件：闲置后回收进程，有人用再拉起
+idle_stop = "2h"
+
 provides = ["fortune.preview@1"]
 
 permissions = ["onebot.write"]

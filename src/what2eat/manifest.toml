@@ -5,6 +5,9 @@ apiVersion = "1.x"
 exec = ["node", "app/index.js"]
 description = "随机推荐吃的喝的，中午/晚上提醒吃饭，支持自定义菜谱"
 
+# 低频插件：闲置后回收进程，有人用再拉起
+idle_stop = "1h"
+
 permissions = ["onebot.write"]
 
 provides = ["w2e.custom.list@1", "w2e.custom.add@1", "w2e.custom.remove@1"]

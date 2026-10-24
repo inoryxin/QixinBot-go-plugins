@@ -5,6 +5,9 @@ apiVersion = "1.x"
 exec = ["node", "app/index.js"]
 description = "提供图片绘制能力，其他插件不用各带一份 canvas 原生模块"
 
+# 低频插件：闲置后回收进程，有人用再拉起
+idle_stop = "1h"
+
 # 服务插件：不接消息，只提供能力
 kind = "service"
 

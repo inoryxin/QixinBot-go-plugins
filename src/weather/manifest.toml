@@ -6,6 +6,9 @@ exec = ["node", "app/index.js"]
 web = "web/index.html"
 description = "查询城市天气（示例插件，数据是假的）"
 
+# 低频插件：闲置后回收进程，有人用再拉起
+idle_stop = "1h"
+
 permissions = ["onebot.write"]
 provides = ["weather_query@1"]
 
