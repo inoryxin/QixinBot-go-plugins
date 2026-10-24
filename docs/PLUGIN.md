@@ -1699,12 +1699,33 @@ await host.capability('db.sqlite', { op: 'exec', sql: 'CREATE TABLE orders (...)
 ```js
 // 直接调，框架自己就带 SQLite
 const r = await host.capability('db.sqlite', {
-  op: 'all',                                    // exec | all
+  op: 'all',                                    // exec | all | get
   sql: 'SELECT * FROM users WHERE id = ?',
   params: [123],
 })
 // r.data.rows / r.data.count（all）
 // r.data.affected / r.data.last_id（exec）
+// r.data.row（get，查不到是 null）
+```
+
+**三种 op**：
+
+| op | 用途 | 返回 |
+|---|---|---|
+| `exec` | INSERT / UPDATE / DELETE / DDL | `{affected, last_id}` |
+| `all` | 查多行（默认） | `{rows: [...], count}` |
+| `get` | **查一行**（按主键/唯一键） | `{row: {...}}` 或 `{row: null}` |
+
+**`get` 查不到不报错**——返回 `{row: null}`。这样"读配置、没有就用默认值"
+不用套 try/catch：
+
+```js
+const r = await host.capability('db.sqlite', {
+  op: 'get',
+  sql: 'SELECT content FROM persona WHERE name = ?',
+  params: ['私聊'],
+})
+const content = r.data.row?.content || '默认人设'
 ```
 
 **返回格式**：
