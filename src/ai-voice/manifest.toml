@@ -1,0 +1,67 @@
+id = "ai-voice"
+name = "发语音"
+version = "1.0.0"
+apiVersion = "1.x"
+exec = ["node", "app/index.js"]
+description = "把文字转成语音发出去（微软 Edge 神经网络语音，本地 Python 合成）"
+
+provides = ["voice.say@1"]
+
+[[capability]]
+name = "voice.say"
+
+[capability.parameters]
+type = "object"
+required = ["text", "chat_type", "chat_id"]
+
+[capability.parameters.properties.text]
+type = "string"
+
+[capability.parameters.properties.chat_type]
+type = "string"
+
+[capability.parameters.properties.chat_id]
+type = "number"
+
+[capability.parameters.properties.account]
+type = "string"
+
+[[commands]]
+id = "voice.test"
+usage = "语音 测试 <文字>"
+description = "合成一句发到当前会话，试试声音"
+
+[[commands]]
+id = "voice.list"
+usage = "语音 声音"
+description = "看可选的音色"
+
+[[settings]]
+key = "python_path"
+label = "Python 路径（要装 edge-tts）"
+type = "string"
+default = "C:\\qqbot\\tools\\py\\python.exe"
+
+[[settings]]
+key = "voice"
+label = "音色"
+type = "string"
+default = "zh-CN-XiaoxiaoNeural"
+
+[[settings]]
+key = "rate"
+label = "语速（如 +10% / -10%）"
+type = "string"
+default = "+0%"
+
+[[settings]]
+key = "max_chars"
+label = "超过多少字就不转语音"
+type = "number"
+default = 300
+
+[[settings]]
+key = "keep_days"
+label = "合成文件保留几天"
+type = "number"
+default = 1

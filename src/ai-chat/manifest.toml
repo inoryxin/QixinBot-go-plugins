@@ -281,6 +281,13 @@ type = "boolean"
 default = true
 
 [[settings]]
+key = "voice_reply"
+label = "用语音回复（整条转语音）"
+type = "bool"
+default = false
+hint = "需要装「发语音」插件（ai-voice）"
+
+[[settings]]
 key = "split_enabled"
 label = "分段发送（像真人一句一句发）"
 type = "bool"

@@ -1277,6 +1277,25 @@ function targetParts() {
 }
 
 async function sendSplit(chat, text) {
+  // 语音模式：整条回复转成语音发出去（不再发文字）
+  if (settings.voice_reply) {
+    try {
+      const r = await host.capability('voice.say', {
+        text,
+        chat_type: chat.chat_type,
+        chat_id: chat.chat_id,
+        account: chat.account || '',
+      })
+      if (r?.ok) {
+        host.log('info', '语音回复已发送')
+        return 1
+      }
+      host.log('warn', '语音失败，回退文字: ' + (r?.error || ''))
+    } catch (e) {
+      host.log('warn', '语音失败，回退文字: ' + e.message)
+    }
+  }
+
   const enabled = settings.split_enabled !== false
   const parts = enabled
     ? splitReply(text, Number(settings.split_max_chars) || 30, targetParts())
