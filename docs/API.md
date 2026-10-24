@@ -44,6 +44,10 @@ apiVersion = "2.x"   # 主版本 2 的框架才会加载
 | 东西 | 风险 |
 |---|---|
 | 日志格式 | 随时改进，插件别解析自己的 `host.log` 输出 |
+| `GET /api/trusted-keys` | 返回 `{keys:[{key,fingerprint,source}], allow_unsigned}` |
+| `POST /api/trusted-keys` | 表单 `key=`，立刻生效（落盘 `data/trusted-keys.json`） |
+| `POST /api/trusted-keys/delete` | 表单 `key=`，只能删热加的（config 里的会报错提示改文件） |
+| 插件上传 | `POST /api/plugins/upload` **走签名校验**（和投放区安装同一套逻辑） |
 | `host.log` 的级别 | 支持 `debug/info/warn/error`，映射到框架日志级别；`fields` 为空不输出 |
 | 内部错误消息文本 | 只保证错误码稳定，`message` 可能改措辞 |
 | `install.json` 的字段 | 框架内部用的，插件读它随时可能坏 |
