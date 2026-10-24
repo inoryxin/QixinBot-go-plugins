@@ -1,0 +1,72 @@
+id = "group-manager"
+name = "群管理"
+version = "1.0.0"
+apiVersion = "1.x"
+exec = ["node", "app/index.js"]
+description = "欢迎新成员、退群通知、违禁词撤回、禁言/踢人。管理员可用。"
+
+# 订阅非消息事件（只有声明的插件才会收到 handle_event）
+events = ["notice"]
+
+concurrency = "session"
+
+# 插件级不设 require_role：违禁词检测要对所有用户的消息生效。
+# 需要权限的只是各条命令（见下面的 require_role）。
+
+[[commands]]
+id = "gm.welcome"
+usage = "welcome <文本>"
+description = "设置本群欢迎语（{at} 会被替换成 @新人）"
+require_role = "admin"
+args = { text = { type = "rest", required = true } }
+
+[[commands]]
+id = "gm.banword"
+usage = "banword <词>"
+description = "添加违禁词（命中后撤回）"
+require_role = "admin"
+args = { word = { type = "rest", required = true } }
+
+[[commands]]
+id = "gm.unbanword"
+usage = "unbanword <词>"
+description = "移除违禁词"
+require_role = "admin"
+args = { word = { type = "rest", required = true } }
+
+[[commands]]
+id = "gm.list"
+usage = "gm"
+description = "查看本群配置"
+require_role = "admin"
+
+[[commands]]
+id = "gm.mute"
+usage = "mute <时长秒>"
+description = "禁言回复的那个人（也可 @某人）"
+require_role = "admin"
+args = { seconds = { type = "string", required = true } }
+
+[[commands]]
+id = "gm.kick"
+usage = "kick"
+description = "踢掉回复的那个人"
+require_role = "admin"
+
+[[settings]]
+key = "welcome_enabled"
+label = "启用欢迎语"
+type = "bool"
+default = true
+
+[[settings]]
+key = "max_ban_words"
+label = "每群最多违禁词数"
+type = "number"
+default = 50
+
+[runtime]
+kind = "node"
+
+[cooldown]
+per_user = "1s"
