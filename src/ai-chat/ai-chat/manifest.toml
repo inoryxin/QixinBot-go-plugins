@@ -31,7 +31,7 @@ require_mention = false
 [[requires]]
 name = "LLM 服务"
 kind = "plugin"
-value = "llm"
+value = "ai-llm"
 
 # 数据库能力由框架内置提供（db.sqlite），不再依赖 sqlite 插件
 

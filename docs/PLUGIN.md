@@ -1041,6 +1041,11 @@ WebUI 的 `GET /api/capabilities` 能看到每个能力的提供者列表和顺�
 - [ ] **消息要全量看到就开 `observe`**：`last = true` 的兜底插件收不到
       被别的插件认领的消息
 - [ ] **定时任务写在 `[[schedule]]`**，别用 `setInterval`（重启会丢）
+- [ ] **改插件 id 前先备份 `data/`**：设置和存储都在
+      `data/plugins/<id>/data/`，删插件会连目录一起删（框架会留
+      `.removed-<id>-<时间戳>` 备份，但别指望它）
+- [ ] **改名后检查 `[[requires]]`**：别的插件里写的 value 也要跟着改，
+      否则启动时报"缺少依赖"
 - [ ] **命令和内置命令别重名**（`/help`、`/plugins`）
 - [ ] **高频路径别刷日志**：`host.log('debug', ...)` 会进缓冲区
 
