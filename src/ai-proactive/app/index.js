@@ -12,6 +12,7 @@
 import { serve, host } from '../_sdk/qixin.mjs'
 
 let settings = {}
+let chatReady = null
 
 function nowSec() {
   return Math.floor(Date.now() / 1000)
@@ -118,6 +119,17 @@ async function trySpeak(chatID, reason, force = false) {
 serve({
   async initialize({ settings: s }) {
     settings = s || {}
+    // 软依赖：没有 AI 聊天插件也能装着，但不会说话。
+    // 明确说出来，别让用户以为"开了没反应"。
+    try {
+      const r = await host.capability('ai.chat', { text: 'ping', chat_type: 'private', chat_id: 0 })
+      chatReady = !!r
+    } catch {
+      chatReady = false
+    }
+    if (!chatReady) {
+      host.log('warn', '没找到 AI 聊天插件（ai-chat）：主动发言不会工作，装上后重启本插件即可')
+    }
     host.log('info', `主动发言已加载（${settings.enabled ? '启用' : '关闭'}）`)
     return { api_version: '1.0' }
   },
@@ -130,6 +142,7 @@ serve({
   async run_task({ task }) {
     if (task !== 'tick') return {}
     if (!settings.enabled) return { skipped: '未启用' }
+    if (chatReady === false) return { skipped: '没有 AI 聊天插件（ai-chat）' }
     if (inQuietHours()) return { skipped: '免打扰时段' }
 
     const minSilence = Number(settings.min_silence_min) || 45
@@ -170,6 +183,7 @@ serve({
     const st = await stateOf(session.chat_id)
     const lines = [
       `主动发言：${settings.enabled ? '开' : '关'}`,
+      `AI 聊天插件：${chatReady === false ? '❌ 没装（不会说话）' : '✅ 已就绪'}`,
       `冷场阈值：${settings.min_silence_min || 45} 分钟`,
       `概率：${settings.chance_pct || 30}% / 每次检查`,
       `免打扰：${settings.quiet_start ?? 0}:00 - ${settings.quiet_end ?? 8}:00`,
