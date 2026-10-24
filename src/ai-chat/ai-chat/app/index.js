@@ -972,6 +972,18 @@ function splitReply(text, maxChars, wantParts) {
 
   const max = Math.max(8, maxChars | 0 || 30)
   const n = Math.max(1, Math.min(5, wantParts | 0 || 1))
+
+  // **换行本身就是人类的分段**：模型写了多行，就按行发，别塞进一条。
+  const paras = s.split(/\n+/).map((x) => x.trim()).filter(Boolean)
+  if (paras.length > 1) {
+    if (paras.length > 5) {
+      const head = paras.slice(0, 4)
+      head.push(paras.slice(4).join(' '))
+      return head
+    }
+    return paras
+  }
+
   if (n === 1 || s.length <= max) return [s]
 
   const parts = []
