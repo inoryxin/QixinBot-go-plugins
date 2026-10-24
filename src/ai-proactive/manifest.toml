@@ -1,0 +1,72 @@
+id = "ai-proactive"
+name = "主动发言"
+version = "1.0.0"
+apiVersion = "1.x"
+exec = ["node", "app/index.js"]
+description = "群里冷场太久时，她会主动开个话头（可设时段/概率/冷却）"
+
+# 每 10 分钟看一次哪些群冷场了
+[[schedule]]
+id = "tick"
+every = "10m"
+description = "检查冷场的群"
+
+[[commands]]
+id = "proactive.info"
+usage = "主动"
+description = "看主动发言的配置和今天发了几次"
+
+[[commands]]
+id = "proactive.now"
+usage = "主动 现在"
+description = "立刻让本群来一条主动发言"
+require_role = "admin"
+
+[[settings]]
+key = "enabled"
+label = "启用主动发言"
+type = "bool"
+default = false
+
+[[settings]]
+key = "min_silence_min"
+label = "冷场多少分钟后才可能说话"
+type = "number"
+default = 45
+
+[[settings]]
+key = "chance_pct"
+label = "每次检查的概率（%）"
+type = "number"
+default = 30
+
+[[settings]]
+key = "quiet_start"
+label = "免打扰开始（小时，0-23）"
+type = "number"
+default = 0
+
+[[settings]]
+key = "quiet_end"
+label = "免打扰结束（小时，0-23）"
+type = "number"
+default = 8
+
+[[settings]]
+key = "group_cooldown_min"
+label = "同一个群两次间隔（分钟）"
+type = "number"
+default = 120
+
+[[settings]]
+key = "max_per_day"
+label = "每个群每天最多几次"
+type = "number"
+default = 3
+
+[[settings]]
+key = "allow_groups"
+label = "只在哪些群生效（留空=全部）"
+type = "string"
+default = ""
+hint = "群号，逗号分隔"

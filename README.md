@@ -53,6 +53,7 @@ cd my-plugin
 | **ai-chat** | AI 聊天（接 llm 服务） | `llm.chat` |
 | **ai-life** | 她的生活（作息/心情/精力，给 AI 提供状态） | — |
 | **ai-persona** | 人设（系统提示词/人设/自称，AI 聊天的唯一提示词来源） | — |
+| **ai-proactive** | 主动发言（群里冷场后自己开话头） | `ai.chat` |
 | **bilibili** | B 站订阅（开播/视频/动态） | — |
 | **canvas** | 画布服务（图片合成、字体管理） | — |
 | **cngal** | 国 G 周报（长图） | `canvas.render` |
