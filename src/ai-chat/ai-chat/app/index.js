@@ -72,7 +72,15 @@ async function ensureSchema() {
     )`)
 
   await db('exec', `
-    CREATE TABLE IF NOT EXISTS ai_glossary (
+    CREATE TABLE IF NOT EXISTS ai_slang_ban (
+      chat_type TEXT NOT NULL,
+      chat_id   INTEGER NOT NULL,
+      term      TEXT NOT NULL,
+      ts        INTEGER NOT NULL,
+      PRIMARY KEY (chat_type, chat_id, term)
+    );
+
+  CREATE TABLE IF NOT EXISTS ai_glossary (
       chat_type TEXT NOT NULL,
       chat_id   INTEGER NOT NULL,
       term      TEXT NOT NULL,
@@ -324,6 +332,61 @@ async function personaCommand(session, text) {
   await reply('可用：/人设 看 · /人设 切换 <名字> · /人设 新建 <名字> <描述> · /人设 删除 <名字>')
 }
 
+// ---- 屏蔽：删掉自动学到但不想要的词 ----
+// 自动统计是算出来的，没法"删除"，所以用屏蔽表：
+// 统计和 prompt 里都跳过这些词。人工词条（ai_glossary）另算。
+
+async function bannedSet(chatType, chatID) {
+  const r = await db(
+    'all',
+    `SELECT term FROM ai_slang_ban WHERE chat_type = ? AND chat_id = ?`,
+    [chatType, chatID],
+  )
+  return new Set((r.rows || []).map((x) => x.term))
+}
+
+async function banTerm(chatType, chatID, term) {
+  await db(
+    'exec',
+    `INSERT INTO ai_slang_ban (chat_type, chat_id, term, ts) VALUES (?, ?, ?, ?)
+     ON CONFLICT(chat_type, chat_id, term) DO NOTHING`,
+    [chatType, chatID, term, now()],
+  )
+}
+
+async function unbanTerm(chatType, chatID, term) {
+  const r = await db(
+    'exec',
+    `DELETE FROM ai_slang_ban WHERE chat_type = ? AND chat_id = ? AND term = ?`,
+    [chatType, chatID, term],
+  )
+  return r.affected > 0
+}
+
+// 哪些群有语料（给面板选）
+async function learnGroups(limit = 50) {
+  const r = await db(
+    'all',
+    `SELECT chat_type, chat_id, COUNT(*) AS n FROM ai_message
+     WHERE role = 'user' GROUP BY chat_type, chat_id
+     ORDER BY n DESC LIMIT ?`,
+    [limit],
+  )
+  return r.rows || []
+}
+
+// ---- 面板用的统计 ----
+async function learnStats(chatType, chatID) {
+  const group = await groupStyle(chatType, chatID, 200, true) // 带屏蔽词，供面板展示/恢复
+  const gl = await glossaryList(chatType, chatID)
+  const banned = await bannedSet(chatType, chatID)
+  return {
+    group: group ? { ...group, banned: [...banned] } : null,
+    glossary: gl,
+    banned: [...banned],
+  }
+}
+
 // ---------------------------------------------------------------- 语气 / 黑话命令
 
 // /语气            我和这个群学到了什么
@@ -365,6 +428,18 @@ async function styleCommand(session, text) {
     await glossarySave(session.chat_type, session.chat_id, term, meaning)
     await reply(`记住了：「${term}」= ${meaning}`)
     return
+  }
+  if (sub === '屏蔽') {
+    const term = tail.slice(1).join(' ').trim()
+    if (!term) return reply('用法：/黑话 屏蔽 <词>\n（屏蔽自动统计出来的词，不再出现在统计里）')
+    await banTerm(session.chat_type, session.chat_id, term)
+    return reply(`已屏蔽「${term}」，以后不会出现在学到的词里（/黑话 恢复 ${term} 可以撤回）`)
+  }
+  if (sub === '恢复') {
+    const term = tail.slice(1).join(' ').trim()
+    if (!term) return reply('用法：/黑话 恢复 <词>')
+    const ok = await unbanTerm(session.chat_type, session.chat_id, term)
+    return reply(ok ? `已恢复「${term}」` : `「${term}」本来就没被屏蔽`)
   }
   if (sub === '删' || sub === '删除') {
     const term = tail.slice(1).join(' ').trim()
@@ -460,13 +535,15 @@ function topPhrases(texts, limit = 8) {
   return picked
 }
 
-async function groupStyle(chatType, chatID) {
+// keepBanned=true 时额外返回 all（含被屏蔽的），给面板展示/恢复用；
+// 正常回复只用过滤后的 slang。
+async function groupStyle(chatType, chatID, limit = 200, keepBanned = false) {
   const r = await db(
     'all',
     `SELECT content FROM ai_message
      WHERE chat_type = ? AND chat_id = ? AND role = 'user'
-     ORDER BY id DESC LIMIT 200`,
-    [chatType, chatID],
+     ORDER BY id DESC LIMIT ?`,
+    [chatType, chatID, limit],
   )
   const rows = r.rows || []
   const texts = rows.map((x) => String(x.content || '')).filter((t) => t && t !== '[图片]')
@@ -484,14 +561,20 @@ async function groupStyle(chatType, chatID) {
     PARTICLE_RE.lastIndex = 0
   }
   const n = texts.length
-  return {
+  const all = topPhrases(texts, 30)
+  const banned = await bannedSet(chatType, chatID)
+  const slang = all.filter((w) => !banned.has(w))
+
+  const out = {
     n,
     avg_len: Math.round(len / n),
     emoji_rate: emoji / n,
     particle_rate: particle / n,
     bang_rate: bang / n,
-    slang: topPhrases(texts),
+    slang,
   }
+  if (keepBanned) out.all = all
+  return out
 }
 
 async function userStyle(userID) {
@@ -948,6 +1031,7 @@ serve({
     await ensureReady()
     if (name === 'ai.chat') return await toolChat(args)
     if (name === 'ai.persona') return await toolPersona(args)
+    if (name === 'ai.learn') return await toolLearn(args)
     return { ok: false, error: `未知能力 ${name}` }
   },
 
@@ -1009,6 +1093,62 @@ async function toolChat(args) {
 
   const r = await respond(session, text, prompt, imgs)
   return r.ok ? { ok: true, data: { text: r.text } } : { ok: false, error: r.error }
+}
+
+// 面板用的"学到什么"接口：看、屏蔽、恢复、管人工词条。
+async function toolLearn(args) {
+  const action = String(args?.action || '')
+  const chatType = String(args?.chat_type || 'group')
+  const chatID = Number(args?.chat_id || 0)
+  const term = String(args?.term || '').trim()
+  const meaning = String(args?.meaning || '').trim()
+
+  if (action === 'groups') {
+    const rows = await learnGroups()
+    return {
+      ok: true,
+      data: {
+        groups: rows.map((r) => ({
+          chat_type: r.chat_type,
+          chat_id: r.chat_id,
+          count: r.n,
+        })),
+      },
+    }
+  }
+
+  if (!chatID) return { ok: false, error: '需要 chat_id' }
+
+  if (action === 'stats') {
+    const st = await learnStats(chatType, chatID)
+    return { ok: true, data: st }
+  }
+
+  if (action === 'ban') {
+    if (!term) return { ok: false, error: '需要 term' }
+    await banTerm(chatType, chatID, term)
+    return { ok: true, data: { banned: term } }
+  }
+
+  if (action === 'unban') {
+    if (!term) return { ok: false, error: '需要 term' }
+    const ok = await unbanTerm(chatType, chatID, term)
+    return { ok: true, data: { unbanned: term, existed: ok } }
+  }
+
+  if (action === 'gloss_add') {
+    if (!term || !meaning) return { ok: false, error: '需要 term 和 meaning' }
+    await glossarySave(chatType, chatID, term, meaning)
+    return { ok: true, data: { term, meaning } }
+  }
+
+  if (action === 'gloss_delete') {
+    if (!term) return { ok: false, error: '需要 term' }
+    const ok = await glossaryDelete(chatType, chatID, term)
+    return { ok: true, data: { deleted: term, existed: ok } }
+  }
+
+  return { ok: false, error: `未知 action: ${action}` }
 }
 
 async function toolPersona(args) {
