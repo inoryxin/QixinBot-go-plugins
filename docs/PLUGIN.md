@@ -419,6 +419,22 @@ name = "weather_query"
 description = "查询城市当前天气。用户问天气、气温、下不下雨时调用。"
 parameters = { type = "object", properties = { city = { type = "string" } }, required = ["city"] }
 
+### 设置项类型（写错会退化成文本框）
+
+| type | 控件 |
+|---|---|
+| `text` / `string` | 单行 / 多行文本 |
+| `number` | 数字框（可配 min/max） |
+| `bool` 或 `boolean` | **复选框**（两种写法都认） |
+| `select` | 下拉框（配合 `options` / `option_labels`） |
+| `password` | 密码框 |
+
+写错的类型不会报错，只会变成文本框——框架现在会在加载时打 warn：
+`设置项类型未知，会显示成文本框 plugin=xxx key=yyy`。
+
+**保存设置**：页面表单会带 `_keys`（这次提交包含哪些 key）。
+服务端只更新这些 key，**没带的开关保持原值**——避免脚本/部分提交把其它 bool 全关掉。
+
 ### 设置项：下拉框显示中文
 
 `options` 是**存的值**，`option_labels` 是**给人看的**（一一对应）：
@@ -1009,6 +1025,24 @@ WebUI 的 `GET /api/capabilities` 能看到每个能力的提供者列表和顺�
 **模型能看到所有 `[[tools]]`，但看不到 `provides`。** 所以"改人设"这种不该让模型自己调的东西，应该做成能力。
 
 ---
+
+## 6.0a 写插件前的检查清单（踩过的坑）
+
+发版前逐条对一遍，能省掉大半返工：
+
+- [ ] **能力参数 schema 写全**：`args` 里用到的每个字段都要在
+      `[capability.parameters.properties.*]` 里声明，否则调用会被拒：
+      `未知参数 "scope"（允许: [action content name]）`
+- [ ] **共享数据先声明**：`host.shared_set` 的 key 必须出现在 `[[shared]]`，
+      且写完整名 `<插件id>.<key>`
+- [ ] **设置项 type 别写错**：`bool`/`boolean` 都行，其它只认
+      `text|string|number|select|password`；写错会退化成文本框
+- [ ] **下拉框给中文**：`options` + `option_labels`
+- [ ] **消息要全量看到就开 `observe`**：`last = true` 的兜底插件收不到
+      被别的插件认领的消息
+- [ ] **定时任务写在 `[[schedule]]`**，别用 `setInterval`（重启会丢）
+- [ ] **命令和内置命令别重名**（`/help`、`/plugins`）
+- [ ] **高频路径别刷日志**：`host.log('debug', ...)` 会进缓冲区
 
 ## 6.1a 观察消息：`observe = true`
 
