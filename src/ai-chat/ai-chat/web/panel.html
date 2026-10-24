@@ -171,3 +171,98 @@
   init()
 })()
 </script>
+
+<!-- 记忆：看得见、能删 -->
+<h2 style="margin-top:24px">记忆</h2>
+<p class="muted" style="margin:0 0 10px">
+  机器人记住的聊天记录。删掉后它就不再"记得"这些内容；不影响群里的消息本身。
+</p>
+
+<div class="row" style="margin-bottom:10px">
+  <select id="mm-chat" style="width:260px" onchange="mmLoad()"></select>
+  <button onclick="mmLoad()">刷新</button>
+  <button class="danger" onclick="mmClear()">清空这个会话</button>
+</div>
+<div id="mm-body" class="muted">加载中…</div>
+
+<script>
+(function(){
+  function $(id){ return document.getElementById(id) }
+  function esc(t){ return String(t).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])) }
+
+  async function call(args){
+    const body = new FormData()
+    body.set('name', 'ai.memory')
+    body.set('args', JSON.stringify(args))
+    const r = await fetch('/api/capabilities/call', { method: 'POST', body })
+    const j = await r.json()
+    if (!j.ok) throw new Error(j.error || '调用失败')
+    const inner = j.result || {}
+    if (inner.ok === false) throw new Error(inner.error || '插件返回失败')
+    return inner.data || {}
+  }
+
+  function cur(){
+    const [t, id] = ($('mm-chat').value || '').split(':')
+    return { chat_type: t, chat_id: Number(id) }
+  }
+
+  window.mmLoad = async function(){
+    const c = cur()
+    if (!c.chat_id) { $('mm-body').textContent = '还没有记忆'; return }
+    try {
+      const d = await call(Object.assign({ action: 'recent', limit: 30 }, c))
+      const rows = d.messages || []
+      if (!rows.length) { $('mm-body').innerHTML = '<p class="muted">（空）</p>'; return }
+      let h = '<table><tbody>'
+      for (const m of rows) {
+        const who = m.role === 'user' ? '你' : '我'
+        h += '<tr><td style="width:44px">' + who + '</td><td>' + esc(String(m.content).slice(0, 80)) +
+             '</td><td style="width:56px"><a href="#" onclick="event.preventDefault();mmDel(' + m.id + ')">删除</a></td></tr>'
+      }
+      h += '</tbody></table>'
+      h += '<div class="row" style="margin-top:8px">' +
+           '<input type="text" id="mm-kw" placeholder="含关键词的删掉" style="width:220px">' +
+           '<button onclick="mmClearKw()">删含这个词的</button></div>'
+      $('mm-body').innerHTML = h
+    } catch (e) { $('mm-body').textContent = '读取失败：' + e.message }
+  }
+
+  window.mmDel = async function(id){
+    await call(Object.assign({ action: 'delete', id }, cur()))
+    mmLoad()
+  }
+
+  window.mmClear = async function(){
+    const c = cur()
+    if (!c.chat_id) return
+    if (!confirm('清空 ' + c.chat_type + ' ' + c.chat_id + ' 的全部记忆？')) return
+    await call(Object.assign({ action: 'clear' }, c))
+    mmLoad()
+  }
+
+  window.mmClearKw = async function(){
+    const kw = ($('mm-kw').value || '').trim()
+    if (!kw) return
+    await call(Object.assign({ action: 'clear_kw', keyword: kw }, cur()))
+    mmLoad()
+  }
+
+  async function init(){
+    try {
+      const d = await call({ action: 'groups' })
+      const sel = $('mm-chat'); sel.innerHTML = ''
+      for (const g of d.groups || []) {
+        const opt = document.createElement('option')
+        opt.value = g.chat_type + ':' + g.chat_id
+        opt.textContent = g.chat_type + ' ' + g.chat_id + '（' + g.n + ' 条）'
+        sel.appendChild(opt)
+      }
+      if ((d.groups || []).length) mmLoad()
+      else $('mm-body').textContent = '还没有记忆。'
+    } catch (e) { $('mm-body').textContent = '读取失败：' + e.message }
+  }
+
+  init()
+})()
+</script>

@@ -16,7 +16,7 @@ concurrency = "session"
 # 声明要用工具（AI 工具面板出现在插件详情页）
 use_tools = true
 
-provides = ["ai.chat@1", "ai.learn@1"]
+provides = ["ai.chat@1", "ai.learn@1", "ai.memory@1"]
 
 # AI 聊天要接普通消息，不能要求命令前缀。
 # 这是最容易漏的一条：默认 require_prefix = true，普通消息会被静默拦掉。
@@ -160,6 +160,39 @@ default = "群聊"
 key = "persona_private"
 description = "私聊当前人设名（内置实现）"
 default = "私聊"
+
+[[capability]]
+name = "ai.memory"
+
+[capability.parameters]
+type = "object"
+required = ["action"]
+
+# groups: 有哪些会话 / recent: 最近消息 / delete: 删一条 / clear: 清空会话
+# clear_kw: 按关键词删
+[capability.parameters.properties.action]
+type = "string"
+enum = ["groups", "recent", "delete", "clear", "clear_kw"]
+
+[capability.parameters.properties.chat_type]
+type = "string"
+
+[capability.parameters.properties.chat_id]
+type = "number"
+
+[capability.parameters.properties.id]
+type = "number"
+
+[capability.parameters.properties.limit]
+type = "number"
+
+[capability.parameters.properties.keyword]
+type = "string"
+
+[[commands]]
+id = "ai.memory"
+usage = "记忆"
+description = "看/清空这个会话的聊天记忆（清空需要管理员）"
 
 [[settings]]
 key = "system_prompt"

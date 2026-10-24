@@ -962,6 +962,85 @@ function shouldTrigger(session) {
 
 // ---------------------------------------------------------------- 回复
 
+// ---------------------------------------------------------------- 记忆管理
+
+async function memoryGroups() {
+  const r = await db('all',
+    `SELECT chat_type, chat_id, COUNT(*) AS n, MAX(ts) AS last
+     FROM ai_message GROUP BY chat_type, chat_id ORDER BY last DESC LIMIT 50`)
+  return r.rows || []
+}
+
+async function memoryRecent(chatType, chatID, limit = 20) {
+  const r = await db('all',
+    `SELECT id, role, user_id, content, ts FROM ai_message
+     WHERE chat_type = ? AND chat_id = ? ORDER BY id DESC LIMIT ?`,
+    [chatType, chatID, Math.max(1, Math.min(100, limit | 0 || 20))])
+  return r.rows || []
+}
+
+async function memoryDelete(id) {
+  const r = await db('exec', `DELETE FROM ai_message WHERE id = ?`, [id])
+  return r.affected > 0
+}
+
+async function memoryClear(chatType, chatID) {
+  const r = await db('exec', `DELETE FROM ai_message WHERE chat_type = ? AND chat_id = ?`, [chatType, chatID])
+  return r.affected || 0
+}
+
+async function memoryClearKw(chatType, chatID, kw) {
+  const r = await db('exec',
+    `DELETE FROM ai_message WHERE chat_type = ? AND chat_id = ? AND content LIKE ?`,
+    [chatType, chatID, `%${kw}%`])
+  return r.affected || 0
+}
+
+function isAdmin(session) {
+  return session.role === 'owner' || session.role === 'admin'
+}
+
+async function memoryCommand(session, text) {
+  const reply = (m) => host.reply(chatOf(session), m)
+  const rest = text.replace(/^记忆\s*/, '').trim()
+  const parts = rest.split(/\s+/)
+  const sub = (parts[0] || '').toLowerCase()
+  const ct = session.chat_type
+  const cid = session.chat_id
+
+  if (!sub) {
+    const rows = await memoryRecent(ct, cid, 6)
+    const total = (await memoryGroups()).find((g) => g.chat_type === ct && String(g.chat_id) === String(cid))
+    const lines = [`这个会话记住了 ${total ? total.n : 0} 条（最多留 ${settings.memory_limit || 1000} 条）`]
+    if (rows.length) {
+      lines.push('最近几条：')
+      for (const m of rows.slice().reverse()) {
+        const who = m.role === 'user' ? '你' : '我'
+        lines.push(`· ${who}：${String(m.content).slice(0, 30)}`)
+      }
+    } else {
+      lines.push('（还是空的）')
+    }
+    lines.push('', '/记忆 清空（管理员）会删掉这个会话的全部记忆')
+    await reply(lines.join('\n'))
+    return
+  }
+
+  if (sub === '清空' || sub === '删') {
+    if (!isAdmin(session)) return reply('只有管理员能清记忆')
+    if (sub === '清空') {
+      const n = await memoryClear(ct, cid)
+      return reply(`已清空这个会话的 ${n} 条记忆（我跟你之间会重新认识）`)
+    }
+    const kw = parts.slice(1).join(' ').trim()
+    if (!kw) return reply('用法：/记忆 删 <关键词>')
+    const n = await memoryClearKw(ct, cid, kw)
+    return reply(n ? `删掉 ${n} 条包含「${kw}」的记忆` : `没有包含「${kw}」的记忆`)
+  }
+
+  await reply('可用：/记忆 看 · /记忆 清空（管理员）· /记忆 删 <关键词>（管理员）')
+}
+
 // ---------------------------------------------------------------- 分段发送
 
 // 真人聊天一般不打句号，短句，用空格或换行隔开。
@@ -984,7 +1063,35 @@ function splitReply(text, maxChars, wantParts) {
     return paras
   }
 
-  if (n === 1 || s.length <= max) return [s]
+  if (n === 1) return [s]
+
+  // 目标多条 + 有空格：按空格分组成 n 条。
+  // 光看长度的话，短回复（"嗯 么么 睡吧"）永远只发一条，概率形同虚设。
+  const tokens = s.split(/\s+/).filter(Boolean)
+  if (tokens.length >= 2 && tokens.length >= n) {
+    const parts = []
+    let i = 0
+    let left = n
+    while (i < tokens.length && left > 0) {
+      const remain = tokens.length - i
+      const take = Math.max(1, Math.ceil(remain / left))
+      let chunk = tokens.slice(i, i + take).join(' ')
+      // 单条超长：把词让给下一组
+      while (chunk.length > max && take > 1) {
+        chunk = tokens.slice(i, i + take - 1).join(' ')
+        break
+      }
+      parts.push(chunk)
+      i += take
+      left--
+    }
+    if (i < tokens.length && parts.length) {
+      parts[parts.length - 1] = parts[parts.length - 1] + ' ' + tokens.slice(i).join(' ')
+    }
+    return parts.filter(Boolean)
+  }
+
+  if (s.length <= max) return [s]
 
   const parts = []
   let rest = s
@@ -1143,6 +1250,12 @@ serve({
       return { handled: true }
     }
 
+    // 记忆管理
+    if (/^记忆(\s|$)/.test(text)) {
+      await memoryCommand(session, text)
+      return { handled: true }
+    }
+
     // 语气 / 黑话
     if (/^(语气|黑话)(\s|$)/.test(text)) {
       await styleCommand(session, text)
@@ -1171,6 +1284,7 @@ serve({
     await ensureReady()
     if (name === 'ai.chat') return await toolChat(args)
     if (name === 'ai.learn') return await toolLearn(args)
+    if (name === 'ai.memory') return await toolMemory(args)
     return { ok: false, error: `未知能力 ${name}` }
   },
 
@@ -1235,6 +1349,37 @@ async function toolChat(args) {
 }
 
 // 面板用的"学到什么"接口：看、屏蔽、恢复、管人工词条。
+async function toolMemory(args) {
+  const action = String(args?.action || '')
+  const chatType = String(args?.chat_type || 'group')
+  const chatID = Number(args?.chat_id || 0)
+
+  try {
+    if (action === 'groups') {
+      return { ok: true, data: { groups: await memoryGroups() } }
+    }
+    if (action === 'recent') {
+      return { ok: true, data: { messages: await memoryRecent(chatType, chatID, Number(args?.limit) || 20) } }
+    }
+    if (action === 'delete') {
+      const id = Number(args?.id || 0)
+      if (!id) return { ok: false, error: '需要 id' }
+      return { ok: true, data: { deleted: await memoryDelete(id) } }
+    }
+    if (action === 'clear') {
+      return { ok: true, data: { cleared: await memoryClear(chatType, chatID) } }
+    }
+    if (action === 'clear_kw') {
+      const kw = String(args?.keyword || '').trim()
+      if (!kw) return { ok: false, error: '需要 keyword' }
+      return { ok: true, data: { deleted: await memoryClearKw(chatType, chatID, kw) } }
+    }
+    return { ok: false, error: `未知 action: ${action}` }
+  } catch (e) {
+    return { ok: false, error: e.message }
+  }
+}
+
 async function toolLearn(args) {
   const action = String(args?.action || '')
   const chatType = String(args?.chat_type || 'group')
