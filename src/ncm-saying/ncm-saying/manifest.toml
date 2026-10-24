@@ -1,0 +1,40 @@
+id = "ncm-saying"
+name = "网抑云"
+version = "1.0.0"
+apiVersion = "1.x"
+exec = ["node", "app/index.js"]
+description = "随机来一条网易云音乐热评"
+
+# 低频插件：闲置后回收进程，有人用再拉起
+# 一天才播一次，平时没必要常驻
+idle_stop = "30m"
+
+concurrency = "session"
+
+[[commands]]
+id = "ncm.random"
+usage = "网抑云"
+description = "随机一条网易云音乐热评"
+
+[[settings]]
+key = "api_url"
+label = "热评接口"
+type = "string"
+default = ""
+hint = "留空用默认的 aa1.cn 接口"
+
+# 每天定时往群里发一条（走框架的定时任务，重启后时间表还在）
+[[schedule]]
+id = "daily"
+cron = "0 9 * * *"
+description = "每天早上 9 点往指定群发一条热评"
+
+[[settings]]
+key = "auto_groups"
+label = "自动发送的群号"
+type = "string"
+default = ""
+hint = "逗号分隔；留空则不发"
+
+[cooldown]
+per_user = "3s"
