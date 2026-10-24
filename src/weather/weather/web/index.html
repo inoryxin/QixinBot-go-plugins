@@ -1,0 +1,33 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>天气设置</title>
+<style>
+body{font:14px/1.6 system-ui,sans-serif;max-width:420px;margin:40px auto;padding:0 20px;color:#222}
+h1{font-size:18px;margin:0 0 4px}
+p.muted{color:#888;font-size:12px;margin:0 0 20px}
+label{display:block;font-size:12px;color:#666;margin:14px 0 4px}
+select,input{width:100%;padding:7px 9px;border:1px solid #d5d5d5;border-radius:4px;font-size:13px}
+button{margin-top:18px;padding:7px 16px;background:#1a73e8;color:#fff;border:0;border-radius:4px;cursor:pointer}
+#msg{color:#137333;font-size:12px;margin-left:8px}
+</style></head><body>
+<h1>天气插件</h1>
+<p class="muted">这个页面由插件自己提供，通过 /api/plugin/weather/settings 读写配置</p>
+<form id="f">
+  <label>温度单位</label>
+  <select name="unit">
+    <option value="celsius">摄氏 °C</option>
+    <option value="fahrenheit">华氏 °F</option>
+  </select>
+  <button type="submit">保存</button><span id="msg"></span>
+</form>
+<script>
+fetch('/api/plugin/weather/settings').then(r => r.json()).then(d => {
+  const el = document.querySelector('[name=unit]');
+  if (el && d.values && d.values.unit) el.value = d.values.unit;
+}).catch(() => {});
+document.getElementById('f').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const body = new URLSearchParams(new FormData(e.target));
+  const r = await fetch('/api/plugin/weather/settings', { method: 'POST', body });
+  document.getElementById('msg').textContent = r.ok ? '已保存' : '保存失败';
+});
+</script>
+</body></html>

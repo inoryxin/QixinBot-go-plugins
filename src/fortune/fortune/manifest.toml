@@ -1,0 +1,87 @@
+id = "fortune"
+name = "运势抽签"
+version = "1.0.0"
+apiVersion = "1.x"
+exec = ["node", "app/index.js"]
+description = "每日运势抽签（图片），支持 23 个主题，每人每天一次"
+
+
+provides = ["fortune.preview@1"]
+
+permissions = ["onebot.write"]
+
+# 「运势」「抽签」是短口令
+concurrency = "session"   # 不同群并行
+[access]
+require_prefix = false
+require_mention = false
+
+[[commands]]
+id = "fortune.draw"
+usage = "运势"
+aliases = ["今日运势", "抽签", "求签"]
+description = "今日运势抽签，每人每天一次"
+
+[[commands]]
+id = "fortune.theme-draw"
+usage = "抽签主题"
+description = "指定主题抽签，例如「原神抽签」"
+
+[[commands]]
+id = "fortune.themes"
+usage = "主题列表"
+description = "列出全部可选抽签主题"
+
+[[commands]]
+id = "fortune.current"
+usage = "查看主题"
+aliases = ["查看抽签主题"]
+description = "查看本群当前抽签主题"
+
+[[commands]]
+id = "fortune.set"
+usage = "设置签"
+description = "设置本群抽签主题（群主/管理员）"
+
+[[commands]]
+id = "fortune.reset"
+usage = "重置主题"
+description = "把本群抽签主题重置为随机（群主/管理员）"
+
+# 渲染要靠 canvas 服务插件
+[[requires]]
+kind = "plugin"
+id = "canvas"
+
+[[tools]]
+name = "draw_fortune"
+description = "给对方抽一张今日运势签（文字版），返回签的等级和签文。用户说「给我抽个签」「今日运势」「算一卦」时调用。"
+
+[tools.parameters]
+type = "object"
+
+[[settings]]
+key = "imageMode"
+label = "图片发送方式"
+type = "string"
+default = "base64"
+
+[[settings]]
+key = "atUser"
+label = "群里抽签时 @ 对方"
+type = "boolean"
+default = true
+
+[[settings]]
+key = "themes"
+label = "启用的主题（空=全部）"
+type = "string"
+default = ""
+
+[runtime]
+kind = "node"
+version = ">=18"
+
+# 命令冷却：同一用户/群在 N 秒内只处理一次（宿主统一执行）
+[cooldown]
+per_user = "5s"

@@ -1,0 +1,31 @@
+id = "status"
+name = "服务器状态"
+version = "1.0.0"
+apiVersion = "1.x"
+exec = ["node", "app/index.js"]
+description = "CPU / 内存 / 磁盘 / 运行时长，支持 /status 和 /状态"
+
+
+concurrency = "session"
+
+[[commands]]
+id = "status.show"
+usage = "status"
+description = "查看服务器状态（CPU、内存、磁盘、运行时长）"
+aliases = ["状态"]
+
+[[settings]]
+key = "show_disk"
+label = "显示磁盘占用"
+type = "bool"
+default = true
+
+[[settings]]
+key = "sample_ms"
+label = "CPU 采样时长（毫秒）"
+type = "number"
+default = 400
+
+[cooldown]
+per_user = "3s"
+per_group = "2s"

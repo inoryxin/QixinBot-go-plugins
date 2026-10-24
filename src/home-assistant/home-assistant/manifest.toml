@@ -1,0 +1,84 @@
+id = "home-assistant"
+name = "智能家居"
+version = "1.0.0"
+apiVersion = "1.x"
+exec = ["node", "app/index.js"]
+description = "控制 Home Assistant 里的灯、电脑、电热毯，查温湿度"
+
+
+permissions = ["onebot.write"]
+
+# 严格遵循命令：只认 home/ha/家电 前缀，自然语言交给 AI
+[access]
+require_prefix = true
+require_mention = false
+
+[[commands]]
+id = "ha.home"
+usage = "home"
+aliases = ["ha", "家电", "智能家居"]
+description = "不带参数看状态；home 开灯 / home 关电脑 / home 温湿度 / home 列表"
+
+[[tools]]
+name = "home_control"
+description = "开关家里的设备（灯、电脑、电热毯、暖风机等）。name 用设备中文名，action 是 on/off/toggle。"
+
+[tools.parameters]
+type = "object"
+required = ["name", "action"]
+
+[tools.parameters.properties.name]
+type = "string"
+
+[tools.parameters.properties.action]
+type = "string"
+
+[[tools]]
+name = "home_environment"
+description = "获取家里的温度和湿度。用户问「家里多少度」「温湿度多少」时调用。"
+
+[tools.parameters]
+type = "object"
+
+[[tools]]
+name = "home_list"
+description = "列出家里可控设备以及当前开关状态、温湿度。用户问「家里什么开着」时调用。"
+
+[tools.parameters]
+type = "object"
+
+[[settings]]
+key = "baseUrl"
+label = "Home Assistant 地址"
+type = "string"
+default = "https://10.0.0.123:8123"
+
+[[settings]]
+key = "token"
+label = "长期令牌"
+type = "password"
+default = ""
+
+[[settings]]
+key = "timeoutMs"
+label = "请求超时（毫秒）"
+type = "number"
+default = 8000
+min = 1000
+max = 60000
+
+[[settings]]
+key = "domains"
+label = "可控设备类型"
+type = "string"
+default = "light,switch,fan,climate,cover"
+
+[[settings]]
+key = "aliasesJson"
+label = "设备别名（JSON）"
+type = "string"
+default = "{}"
+
+[runtime]
+kind = "node"
+version = ">=18"
