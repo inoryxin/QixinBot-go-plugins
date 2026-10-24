@@ -76,6 +76,22 @@ cd my-plugin
 - 如果混进一把别人签的包 → 用户的框架会**拒装**，还得手动加公钥
 - 所以官方仓库 = 官方签名，不掺第三方密钥
 
+### 维护者上架操作（三步）
+
+```powershell
+# 1. 把作者的源码放进仓库
+#    src/<id>/（manifest.toml + app/ …），作者不需要签名
+
+# 2. 用官方私钥重新打包（作者的密钥不参与）
+.\bin\qixinpack.exe pack src/<id> -out packages/<id>.anzu -key plugin-signing.priv
+
+# 3. 全量校验 + 发版（任何非官方指纹都会让打包失败）
+.\tools\package.ps1 -Key plugin-signing.priv
+```
+
+**关键点**：作者的包/密钥都不需要。你从他的**源码**重签，
+对外就只有一个签名者——官方。这样用户装任何官方插件都不用改配置。
+
 ### 你要提交插件怎么办
 
 **你的密钥只在你自己机器上有用，不用给我**：
