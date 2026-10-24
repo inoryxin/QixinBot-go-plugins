@@ -23,11 +23,11 @@
 <!-- 学到的东西：看得见、能删 -->
 <h2 style="margin-top:24px">学到的东西</h2>
 <p class="muted" style="margin:0 0 10px">
-  这些是从群聊里自动统计出来的说话习惯和高频词（群黑话）。觉得哪个词不适合就让 AI 学，点 ✕ 屏蔽掉。
+  这些是从群聊里自动统计的说话习惯，以及**群友反复发的短句**（群黑话）。觉得哪个词不该学，点 ✕ 屏蔽。
 </p>
 
 <div class="row" style="margin-bottom:10px">
-  <select id="lg-group" style="width:260px"></select>
+  <select id="lg-group" style="width:260px" onchange="lgLoad()"></select>
   <button onclick="lgLoad()">刷新</button>
   <button class="danger" onclick="lgForget()">删掉这个群的语料</button>
 </div>
@@ -119,8 +119,14 @@
     h += '<p style="margin:0 0 8px">统计自 <strong>' + g.n + '</strong> 条消息：平均 <strong>' + g.avg_len +
          '</strong> 字 · 表情 ' + Math.round(g.emoji_rate * 100) + '% · 语气词 ' + Math.round(g.particle_rate * 100) + '%</p>'
 
-    h += '<p style="margin:10px 0 4px"><strong>高频词（自动学的）</strong>　<span class="muted">点 ✕ 屏蔽</span></p>'
-    h += '<div>' + chips(g.slang || [], 'ban') + '</div>'
+    h += '<p style="margin:10px 0 4px"><strong>群黑话 / 常用梗</strong>　<span class="muted">点 ✕ 屏蔽</span></p>'
+    if ((g.slang || []).length) {
+      h += '<div>' + chips(g.slang, 'ban') + '</div>'
+    } else {
+      h += '<p class="muted" style="margin:0">还没学到稳定的词——需要同一句短话出现 ≥2 次，' +
+           '或者出现「草/笑死/离谱」这类常见梗。也可以直接在下面教它。' +
+           '（图片消息不算语料）</p>'
+    }
 
     if ((d.banned || []).length) {
       h += '<p style="margin:10px 0 4px"><strong>已屏蔽</strong>　<span class="muted">点 ↺ 恢复</span></p>'

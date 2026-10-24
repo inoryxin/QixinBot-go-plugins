@@ -386,8 +386,13 @@ async function unbanTerm(chatType, chatID, term) {
 async function learnGroups(limit = 50) {
   const r = await db(
     'all',
-    `SELECT chat_type, chat_id, COUNT(*) AS n FROM ai_message
-     WHERE role = 'user' GROUP BY chat_type, chat_id
+    // 只统计"能学的"：空内容和 [图片] 不算，不然下拉显示 61 条、
+    // 下面统计却说 30 条，对不上。
+    `SELECT chat_type, chat_id,
+            SUM(content <> '' AND content <> '[图片]') AS n
+     FROM ai_message WHERE role = 'user'
+     GROUP BY chat_type, chat_id
+     HAVING n > 0
      ORDER BY n DESC LIMIT ?`,
     [limit],
   )
@@ -514,48 +519,55 @@ function cleanText(t) {
     .replace(/[^\p{Script=Han}a-zA-Z0-9]/gu, '')
 }
 
-// 高频词组：1-4 字。
+// 群黑话 = **反复出现的短句**。
 //
-// 阈值跟着样本量走：只有十几条消息时要求 2 次，几百条时要求 5 次。
-// 固定阈值 3 的问题很实际——"草"在 13 条里出现 3 次也会被漏掉（它是单字，
-// 原来的循环从 n=2 开始根本没统计单字），而群黑话恰恰大量是单字。
+// 为什么不用 n-gram：中文没分词，"怎么/什么/学校长"会被切成
+// 「怎」「什」「校长」这种碎片，统计出来全是噪音（用户原话："学的什么玩意"）。
+//
+// 改成：只看长度 ≤8 的短消息，整句计数，出现 ≥2 次才算。
+// 群里的黑话本来就是这样——"草""确实""笑死""离谱"。
+const SLANG_SINGLE = new Set('草靠淦乐笑哈6')
+
 function topPhrases(texts, limit = 8) {
-  const minCount = Math.max(2, Math.min(5, Math.round(texts.length * 0.05)))
-  const minCharCount = Math.max(3, minCount + 1)
-
   const counts = new Map()
-  for (const raw of texts) {
+  const where = new Map() // 词 → 出现在第几条，用于"至少两条不同消息"
+  texts.forEach((raw, idx) => {
     const s = cleanText(raw)
-    for (let n = 1; n <= 4; n++) {
-      for (let i = 0; i + n <= s.length; i++) {
-        const g = s.slice(i, i + n)
-        counts.set(g, (counts.get(g) || 0) + 1)
-      }
-    }
+    if (!s) return
+    const n = [...s].length
+    if (n > 8) return // 长消息里的词不算黑话，那是正常聊天
+    if (n === 1 && !SLANG_SINGLE.has(s)) return // 单字只认语气/梗字
+    if (STOP_WORDS.has(s)) return
+    counts.set(s, (counts.get(s) || 0) + 1)
+    if (!where.has(s)) where.set(s, new Set())
+    where.get(s).add(idx)
+  })
+
+  const repeated = [...counts]
+    .filter(([w, c]) => c >= 2 && (where.get(w)?.size || 0) >= 2)
+    .sort((a, b) => b[1] - a[1] || a[0].length - b[0].length)
+    .map(([w]) => w)
+
+  // 再补一层：常见网络用语只要在这个群出现 ≥2 次就算（中文没法分词，
+  // 但"草/笑死/离谱/破防"这些是有确定写法的，用词表识别比切词可靠得多）
+  for (const w of COMMON_SLANG) {
+    if (repeated.includes(w)) continue
+    const n = texts.reduce((acc, t) => acc + (String(t).includes(w) ? 1 : 0), 0)
+    if (n >= 2) repeated.push(w)
   }
 
-  const arr = [...counts]
-    .filter(([g, c]) => {
-      if (/^\d+$/.test(g) || STOP_WORDS.has(g)) return false
-      // 单字：阈值更高，且排除"的了是"这类常用字
-      if ([...g].length === 1) return c >= minCharCount && !STOP_CHARS.has(g)
-      return c >= minCount
-    })
-    // 长一点的词更有信息量：count * 长度
-    .sort((a, b) => b[1] * b[0].length - a[1] * a[0].length)
-
-  // 去冗余：e.g. 已经选了「群黑话」就不再单列「黑话」
-  const picked = []
-  for (const [g, c] of arr) {
-    if (picked.some((p) => p.includes(g) || g.includes(p))) continue
-    picked.push(g)
-    if (picked.length >= limit) break
-  }
-  return picked
+  return repeated.slice(0, limit)
 }
 
-// keepBanned=true 时额外返回 all（含被屏蔽的），给面板展示/恢复用；
-// 正常回复只用过滤后的 slang。
+// 常见网络用语（不需要分词就能识别的）
+const COMMON_SLANG = [
+  '草', '靠', '淦', '笑死', '离谱', '确实', '绝了', '牛逼', '绷不住', '破防',
+  '麻了', '摆烂', '抽象', '社死', '好家伙', '逆天', '真香', '无语', '急了', '典',
+  '寄', '润', '卷', '躺平', '干饭', '摸鱼', '乐子', '难绷', '笑不活了', '尊嘟',
+  '哒咩', '栓Q', '家人们', '谁懂啊', '我哭死', '狠狠', '开摆', '啊对对对', '贴贴',
+  '乐', '哈', '6', '拉了', '稳', '秀', '离谱他妈',
+]
+
 async function groupStyle(chatType, chatID, limit = 200, keepBanned = false) {
   const r = await db(
     'all',
