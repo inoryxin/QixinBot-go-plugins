@@ -26,6 +26,12 @@ type = "number"
 [capability.parameters.properties.account]
 type = "string"
 
+# 它是 AI 聊天的扩展：没有主插件就没有意义
+[[requires]]
+kind = "plugin"
+name = "AI 聊天"
+value = "ai-chat"
+
 [[commands]]
 id = "voice.test"
 usage = "语音 测试 <文字>"

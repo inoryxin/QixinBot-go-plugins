@@ -50,3 +50,9 @@ key = "work_end"
 label = "下班时间（0-23）"
 type = "number"
 default = 18
+
+# 它是 AI 聊天的扩展：没有主插件就没有意义
+[[requires]]
+kind = "plugin"
+name = "AI 聊天"
+value = "ai-chat"

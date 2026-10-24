@@ -12,8 +12,8 @@
 | 插件 | 依赖 | 类型 | 少了会怎样 |
 |---|---|---|---|
 | `ai-chat` | `ai-llm` | **硬**（`[[requires]]`） | 起不来，插件页显示"缺少依赖" |
-| `ai-proactive` | `ai-chat` | **软** | 照常加载，但不会说话；`/主动` 显示 ❌，日志有警告 |
-| `ai-chat` | `ai-persona` / `ai-life` / `ai-affinity` / `ai-voice` | 可选 | 各自功能降级：人设用内置的、没有生活状态、不按好感度、回文字 |
+| `ai-persona` / `ai-life` / `ai-affinity` / `ai-voice` / `ai-proactive` | `ai-chat` | **硬**（`kind = "plugin"`） | 起不来，插件页红字「缺少依赖 AI 聊天：需要先安装插件 ai-chat」 |
+| `ai-chat` | `ai-persona` / `ai-life` / `ai-affinity` / `ai-voice` | 软（能力探测） | 各自功能降级：人设用内置、没有生活状态、不按好感度、回文字 |
 | 其它 `ai-*` | 无 | — | 可以单独装，不依赖 ai-chat |
 
 **"主插件没了会不会提醒"**：硬依赖会在插件页红字提示 + 起不来；

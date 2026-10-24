@@ -25,7 +25,8 @@ const VOICES = [
 ]
 
 function python() {
-  return String(settings.python_path || 'C:\\qqbot\\tools\\py\\python.exe')
+  // 优先级：插件设置 > 框架指定的解释器 > 默认便携 Python
+  return String(settings.python_path || process.env.QIXIN_PYTHON || 'C:\\qqbot\\tools\\py\\python.exe')
 }
 
 function run(args, timeoutMs = 30000) {

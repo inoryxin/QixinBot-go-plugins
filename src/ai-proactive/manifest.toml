@@ -11,6 +11,12 @@ id = "tick"
 every = "10m"
 description = "检查冷场的群"
 
+# 它是 AI 聊天的扩展：没有主插件就没有意义
+[[requires]]
+kind = "plugin"
+name = "AI 聊天"
+value = "ai-chat"
+
 [[commands]]
 id = "proactive.info"
 usage = "主动"
