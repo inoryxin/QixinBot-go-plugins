@@ -50,10 +50,13 @@ async function ensureSchema() {
 
 async function getRow(userID) {
   const r = await db('get', `SELECT user_id, score, note, updated FROM affinity WHERE user_id = ?`, [userID])
-  return r.row || { user_id: userID, score: 0, note: '', updated: 0 }
+  const base = Number(settings.base_score ?? 30)
+  return r.row || { user_id: userID, score: base, note: '', updated: 0 }
 }
 
 async function setScore(userID, score) {
+  // 主人永远满，不允许被改低
+  if (isMaster(userID)) score = 1000
   const s = Math.max(-999, Math.min(9999, Math.round(score)))
   await db('exec',
     `INSERT INTO affinity (user_id, score, updated) VALUES (?, ?, ?)
@@ -74,17 +77,125 @@ async function topList(limit = 10) {
   return r.rows || []
 }
 
+function masterList() {
+  return String(settings.master_qq || '')
+    .split(/[,，\s]+/)
+    .map((x) => Number(x.trim()))
+    .filter((n) => Number.isFinite(n) && n > 0)
+}
+
+function isMaster(userID) {
+  return masterList().includes(Number(userID))
+}
+
+// 关系语气：主人 > 明显好 > 一般 > 偏冷 > 阴阳怪气
+function toneOf(score, base, mastered) {
+  if (mastered) return 'master'
+  if (score >= base + 150) return 'warm'
+  if (score <= base - 60) return 'cold' // 关系差：阴阳怪气
+  if (score <= base - 25) return 'cool'
+  return 'normal'
+}
+
 function payload(userID, row) {
-  const l = levelOf(Number(row.score || 0))
+  const base = Number(settings.base_score ?? 30)
+  const mastered = isMaster(userID)
+  const score = mastered ? 1000 : Number(row.score || 0)
+  const l = levelOf(score)
   return {
     user_id: Number(row.user_id || userID),
-    score: Number(row.score || 0),
+    score,
+    base,
+    is_master: mastered,
+    tone: toneOf(score, base, mastered),
     level: l.level,
     title: l.title,
   }
 }
 
-// 靠聊天涨好感：每人每天有上限，私聊另加
+// 可疑"坏话"：命中才值得花钱让模型判断（大部分句子直接跳过）
+const NEG_RE = /(傻|笨|蠢|滚|烦|讨厌|去死|废物|垃圾|闭嘴|别说话|恶心|丑|烂|弱智|神经|有病|阴阳|爬|寄了|你行不行|没用)/
+
+function suspicious(text) {
+  return NEG_RE.test(String(text || ''))
+}
+
+// 让模型判断这句话对"她"的态度，输出 JSON。
+// 关键是**结合语境**：反讽、调情、吐槽都不该掉分，真攻击才掉。
+async function judgeIntent(session, text) {
+  try {
+    const recent = await db('all',
+      `SELECT role, content FROM ai_message
+       WHERE chat_type = ? AND chat_id = ? ORDER BY id DESC LIMIT 4`,
+      [session.chat_type, session.chat_id])
+    const ctx = (recent.rows || [])
+      .slice()
+      .reverse()
+      .map((m) => `${m.role === 'user' ? '对方' : '我'}：${String(m.content).slice(0, 60)}`)
+      .join('\n')
+
+    const prompt =
+      `下面是一段聊天。判断最后一句"对方"的话是在对"我"（机器人）表达什么，只输出 JSON：\n` +
+      `{"delta": -5 到 3 的整数, "intent": "调情/反讽/吐槽/玩笑/攻击/正常"}\n\n` +
+      `规则：\n` +
+      `- 调情、打情骂俏、反讽、玩梗、熟人吐槽 → delta 0 或正数\n` +
+      `- 真的在骂人、羞辱、驱赶、恶意攻击 → delta 负数\n` +
+      `- 拿不准就给 0\n\n` +
+      `聊天记录：\n${ctx}\n对方：${String(text).slice(0, 200)}\n`
+
+    const r = await host.capability('llm.chat', {
+      messages: [{ role: 'user', content: prompt }],
+    })
+    if (!r?.ok) return null
+    const m = String(r.data?.text || '').match(/\{[\s\S]*\}/)
+    if (!m) return null
+    const obj = JSON.parse(m[0])
+    const delta = Math.max(-5, Math.min(3, Number(obj.delta) || 0))
+    return { delta, intent: String(obj.intent || '') }
+  } catch (e) {
+    host.log('debug', '意图判断失败: ' + e.message)
+    return null
+  }
+}
+
+// 坏话掉分：每天有上限；主人不掉
+async function maybePunish(session) {
+  if (!settings.judge_enabled) return
+  const uid = Number(session.user_id || 0)
+  if (!uid || isMaster(uid)) return
+  if (!suspicious(session.text)) return
+
+  const key = `judge:${today()}`
+  const used = Number(await host.storage.get(key)) || 0
+  const cap = Number(settings.judge_max_per_day) || 10
+  if (used >= cap) return
+  await host.storage.set(key, used + 1)
+
+  const verdict = await judgeIntent(session, session.text)
+  if (!verdict || verdict.delta === 0) {
+    host.log('info', `判断 user=${uid} intent=${verdict?.intent || '?'} delta=0（不扣）`)
+    return
+  }
+
+  let delta = verdict.delta
+  const row = await getRow(uid)
+  const base = Number(settings.base_score ?? 30)
+  // 基础分以下才允许明显掉；已经很低就不再踩
+  if (delta < 0) {
+    if (Number(row.score) <= base - 100) return
+    const lossKey = `loss:${uid}:${today()}`
+    const lost = Number(await host.storage.get(lossKey)) || 0
+    const lossCap = Number(settings.daily_loss) || 5
+    delta = -Math.min(Math.abs(delta), Math.max(0, lossCap - lost))
+    if (delta === 0) return
+    await host.storage.set(lossKey, lost + Math.abs(delta))
+  }
+
+  await addScore(uid, delta)
+  host.log('info', `判断 user=${uid} intent=${verdict.intent} delta=${delta}`)
+}
+
+// 靠聊天涨好感：每人每天有上限，私聊另加// 靠聊天涨好感：每人每天有上限，私聊另加
 async function gainFromChat(session) {
   const uid = Number(session.user_id || 0)
   if (!uid) return
@@ -119,6 +230,7 @@ serve({
       if (session.has_prefix) return {}
       await ensureSchema()
       await gainFromChat(session)
+      await maybePunish(session)
       return {}
     } catch (e) {
       host.log('debug', '好感度记录失败: ' + e.message)

@@ -1,4 +1,4 @@
-id = "affinity"
+id = "ai-affinity"
 name = "好感度"
 version = "1.0.0"
 apiVersion = "1.x"
@@ -72,10 +72,43 @@ type = "bool"
 default = true
 
 [[settings]]
+key = "base_score"
+label = "基础分（陌生人的起点）"
+type = "number"
+default = 30
+hint = "低于基础分就是关系不好，会阴阳怪气"
+
+[[settings]]
 key = "daily_gain"
 label = "每天靠聊天最多涨几分"
 type = "number"
 default = 2
+
+[[settings]]
+key = "daily_loss"
+label = "每天最多掉几分"
+type = "number"
+default = 5
+
+[[settings]]
+key = "master_qq"
+label = "主人 QQ（好感永远满）"
+type = "string"
+default = ""
+hint = "逗号分隔；主人骂你也当调情"
+
+[[settings]]
+key = "judge_enabled"
+label = "用模型判断坏话该不该降分"
+type = "bool"
+default = true
+hint = "反讽/调情/吐槽不降；真攻击才降。只对可疑句子调模型"
+
+[[settings]]
+key = "judge_max_per_day"
+label = "每天最多判断几次（省 token）"
+type = "number"
+default = 10
 
 [[settings]]
 key = "private_bonus"

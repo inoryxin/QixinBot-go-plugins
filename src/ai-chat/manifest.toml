@@ -3,7 +3,7 @@ name = "AI 聊天"
 version = "1.0.0"
 apiVersion = "1.x"
 exec = ["node", "app/index.js"]
-description = "会记住每个人的对话，支持人设切换、概率回复和主动发言"
+description = "会记住每个人的对话；人设由 ai-persona 插件提供，没装时用内置的"
 
 permissions = ["onebot.write"]
 
@@ -16,7 +16,10 @@ concurrency = "session"
 # 声明要用工具（AI 工具面板出现在插件详情页）
 use_tools = true
 
-provides = ["ai.chat@1", "ai.learn@1"]
+# 所有消息都抄我一份（别人认领的也要）：记忆靠这个
+observe = true
+
+provides = ["ai.chat@1", "ai.learn@1", "ai.memory@1"]
 
 # AI 聊天要接普通消息，不能要求命令前缀。
 # 这是最容易漏的一条：默认 require_prefix = true，普通消息会被静默拦掉。
@@ -28,7 +31,7 @@ require_mention = false
 [[requires]]
 name = "LLM 服务"
 kind = "plugin"
-value = "llm"
+value = "ai-llm"
 
 # 数据库能力由框架内置提供（db.sqlite），不再依赖 sqlite 插件
 
@@ -36,7 +39,7 @@ value = "llm"
 # [[requires]]
 # name = "好感度"
 # kind = "plugin"
-# value = "affinity"
+# value = "ai-affinity"
 
 # ---- 能力：别的插件让它说话 ----
 [[capability]]
@@ -118,21 +121,114 @@ type = "number"
 [capability.parameters.properties.term]
 type = "string"
 
-[[settings]]
-key = "trigger_mode"
-label = "触发方式"
-type = "select"
-options = ["mention", "always", "prob"]
-default = "mention"
-help = "mention=只在@时回复；always=每条都回；prob=按概率"
+[capability.parameters.properties.meaning]
+type = "string"
+
+# ---- 内置人设（装了 ai-persona 插件时自动让位）----
+# hidden = true：不和 ai-persona 的命令在 /help 里重复显示
+[[commands]]
+id = "ai.persona.list"
+usage = "人设"
+description = "查看当前人设（内置实现，装 ai-persona 插件后由它接管）"
+hidden = true
+
+[[commands]]
+id = "ai.persona.use"
+usage = "人设 切换 <名字>"
+description = "本群/本私聊切换到指定人设（内置实现）"
+require_role = "admin"
+hidden = true
+
+[[commands]]
+id = "ai.persona.new"
+usage = "人设 新建 <名字> <描述>"
+description = "新建或修改一个人设（内置实现）"
+require_role = "admin"
+hidden = true
+
+[[commands]]
+id = "ai.persona.del"
+usage = "人设 删除 <名字>"
+description = "删除一个人设（内置实现）"
+require_role = "owner"
+hidden = true
+
+# 内置人设用到的共享键（完整 key = ai-chat.persona_group）
+[[shared]]
+key = "persona_group"
+description = "本群当前人设名（内置实现）"
+default = "群聊"
+
+[[shared]]
+key = "persona_private"
+description = "私聊当前人设名（内置实现）"
+default = "私聊"
+
+[[capability]]
+name = "ai.memory"
+
+[capability.parameters]
+type = "object"
+required = ["action"]
+
+# groups: 有哪些会话 / recent: 最近消息 / delete: 删一条 / clear: 清空会话
+# clear_kw: 按关键词删
+[capability.parameters.properties.action]
+type = "string"
+enum = ["groups", "recent", "delete", "clear", "clear_kw"]
+
+[capability.parameters.properties.chat_type]
+type = "string"
+
+[capability.parameters.properties.chat_id]
+type = "number"
+
+[capability.parameters.properties.id]
+type = "number"
+
+[capability.parameters.properties.limit]
+type = "number"
+
+[capability.parameters.properties.keyword]
+type = "string"
+
+[[commands]]
+id = "ai.memory"
+usage = "记忆"
+description = "看/清空这个会话的聊天记忆（清空需要管理员）"
 
 [[settings]]
-key = "trigger_prob"
-label = "普通消息触发概率（%）"
+key = "system_prompt"
+label = "系统提示词（内置人设）"
+type = "text"
+default = "你是一个群聊里的朋友，说话自然、简短、口语化。不要用列表和标题，不要说自己是 AI。"
+hint = "装了 ai-persona 插件时以那边的为准"
+
+[[settings]]
+key = "bot_name"
+label = "机器人自称"
+type = "string"
+default = ""
+
+[[settings]]
+key = "speaking_style"
+label = "说话风格补充"
+type = "text"
+default = ""
+
+# @ 和插话是**两件独立的事**：@ 必回，插话是随机水群
+[[settings]]
+key = "reply_on_mention"
+label = "被@时必须回复"
+type = "bool"
+default = true
+
+[[settings]]
+key = "group_chance_pct"
+label = "群聊随机插话概率（%）"
 type = "number"
-default = 5
-min = 0
-max = 100
+default = 0
+hint = "0 = 不插话；20 = 每 100 条普通消息里大约搭 20 次话"
 
 [[settings]]
 key = "cooldown"
@@ -160,17 +256,78 @@ max = 100
 
 [[settings]]
 key = "personal_memory"
-label = "个人记忆条数（跨群）"
+label = "个人记忆上限（条，多了不存）"
 type = "number"
-default = 200
+default = 500
 min = 0
 max = 2000
+
+[[settings]]
+key = "memory_base"
+label = "平常聊天带几条记忆"
+type = "number"
+default = 3
+
+[[settings]]
+key = "memory_max"
+label = "聊到相关话题最多带几条"
+type = "number"
+default = 15
 
 [[settings]]
 key = "use_affinity"
 label = "接入好感度"
 type = "boolean"
 default = true
+
+[[settings]]
+key = "split_enabled"
+label = "分段发送（像真人一句一句发）"
+type = "bool"
+default = true
+
+[[settings]]
+key = "split_max_chars"
+label = "每段最多多少字"
+type = "number"
+default = 30
+
+[[settings]]
+key = "split_delay_ms"
+label = "段与段之间停顿（毫秒）"
+type = "number"
+default = 500
+
+# 分成几条的概率（相对权重，不用凑满 100）
+[[settings]]
+key = "split_pct_1"
+label = "发 1 条的概率"
+type = "number"
+default = 20
+
+[[settings]]
+key = "split_pct_2"
+label = "发 2 条的概率"
+type = "number"
+default = 40
+
+[[settings]]
+key = "split_pct_3"
+label = "发 3 条的概率"
+type = "number"
+default = 25
+
+[[settings]]
+key = "split_pct_4"
+label = "发 4 条的概率"
+type = "number"
+default = 10
+
+[[settings]]
+key = "split_pct_5"
+label = "发 5 条的概率"
+type = "number"
+default = 5
 
 [[settings]]
 key = "reply_typing"

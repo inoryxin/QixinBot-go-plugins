@@ -19,6 +19,9 @@ type = "object"
 [capability.parameters.properties.chat_type]
 type = "string"
 
+[capability.parameters.properties.chat_id]
+type = "number"
+
 [[capability]]
 name = "persona.manage"
 description = "人设的增删改查（控制台面板调用）"
@@ -65,22 +68,45 @@ usage = "人设 删除 <名字>"
 description = "删除一个人设"
 require_role = "owner"
 
+# 声明后才能写：完整 key = ai-persona.current_group
+[[shared]]
+key = "current_group"
+description = "本群当前人设名"
+default = "群聊"
+
+[[shared]]
+key = "current_private"
+description = "私聊当前人设名"
+default = "私聊"
+
+# 按会话的覆盖：JSON 字符串 {"group:523507256":"猫娘"}
+# 面板设的是默认，群里 /人设 切换 才写这里
+[[shared]]
+key = "per_chat"
+description = "按会话覆盖的人设（JSON）"
+default = "{}"
+
+[[shared]]
+key = "style_override"
+description = "临时说话风格（能力 set_style 用）"
+default = ""
+
 [[settings]]
 key = "system_prompt"
-label = "基础系统提示词"
+label = "基础提示词（所有人设共用）"
 type = "text"
-default = "你是一个群聊里的朋友，说话自然、简短、口语化。不要用列表和标题，不要说自己是 AI。"
-hint = "所有人的共同底座；人设是在它上面叠加的"
+default = "你是一个群聊里的朋友，说话自然、简短、口语化。像手机聊天：短句，不用句号，用空格或换行断开。不要用列表和标题，不要说自己是 AI。"
+hint = "所有场景、所有人设都先吃这段；具体人设在下面「人设列表」里选"
 
 [[settings]]
 key = "bot_name"
-label = "机器人自称"
+label = "机器人自称（共用）"
 type = "string"
 default = ""
 
 [[settings]]
 key = "speaking_style"
-label = "说话风格补充"
+label = "说话风格补充（共用）"
 type = "text"
 default = ""
-hint = "可留空。填了会拼在提示词最后"
+hint = "可留空。这部分对所有人设都生效"

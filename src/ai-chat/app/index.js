@@ -23,6 +23,7 @@ function ensureReady() {
   if (!readyPromise) {
     readyPromise = (async () => {
       await ensureSchema()
+      await seedFallbackPersonas()
       ready = true
     })().catch((err) => {
       readyPromise = null
@@ -40,7 +41,13 @@ async function db(op, sql, params = []) {
 
 async function ensureSchema() {
   await db('exec', `
-    CREATE TABLE IF NOT EXISTS ai_message (
+    CREATE TABLE IF NOT EXISTS ai_persona (
+      name    TEXT PRIMARY KEY,
+      content TEXT NOT NULL,
+      ts      INTEGER NOT NULL
+    );
+
+  CREATE TABLE IF NOT EXISTS ai_message (
       id        INTEGER PRIMARY KEY AUTOINCREMENT,
       chat_type TEXT    NOT NULL,
       chat_id   INTEGER NOT NULL,
@@ -121,6 +128,18 @@ async function remember(session, role, content) {
     )
   }
 
+  // 个人记忆上限：这个 QQ 的全部消息只留最近 N 条（跨会话）
+  if (role === 'user' && session.user_id) {
+    const cap = Math.max(50, Math.min(5000, Number(settings.personal_memory) || 500))
+    await db('exec',
+      `DELETE FROM ai_message
+       WHERE role = 'user' AND user_id = ? AND id NOT IN (
+         SELECT id FROM ai_message WHERE role = 'user' AND user_id = ?
+         ORDER BY id DESC LIMIT ?
+       )`,
+      [session.user_id, session.user_id, cap])
+  }
+
   // 按群滚动清理
   const limit = Math.max(50, Number(settings.memory_limit) || 1000)
   await db('exec',
@@ -135,13 +154,16 @@ async function remember(session, role, content) {
 }
 
 // 个人记忆：这个 QQ 号说过的话（跨群跨私聊）
-async function personalHistory(userID, limit) {
+// 个人记忆 = 这个 QQ 在**别的会话**里说过的话。
+// 跟 QQ 走，不跟群走：群里聊过的，私聊能接着聊。
+async function personalHistory(userID, limit, exclude = {}) {
   if (!userID || limit <= 0) return []
   const r = await db('all',
-    `SELECT content, ts FROM ai_message
+    `SELECT content, ts, chat_type, chat_id FROM ai_message
      WHERE user_id = ? AND role = 'user'
+       AND NOT (chat_type = ? AND chat_id = ?)
      ORDER BY id DESC LIMIT ?`,
-    [userID, limit],
+    [userID, exclude.chat_type || '', exclude.chat_id || 0, limit],
   )
   return (r.rows || []).reverse()
 }
@@ -176,6 +198,199 @@ function scopeOf(chatType) {
 }
 
 
+
+// ---------------------------------------------------------------- 兜底人设
+// 装了 ai-persona 插件时，人设由它管，这里全部让位；
+// 没装的时候，ai-chat 自己也能设人设（老版本行为）。
+
+const FALLBACK_PERSONAS = {
+  群聊: '在群里聊天，说话简短自然，不抢话，偶尔接梗。一般一两句就够。',
+  私聊: '和熟人私聊，语气更放松亲近，可以多说几句，会关心对方。',
+}
+
+// personaPluginReady 缓存：人设插件在不在（每进程只测一次）
+let personaPluginFound = null
+async function hasPersonaPlugin() {
+  if (personaPluginFound !== null) return personaPluginFound
+  try {
+    const r = await host.capability('persona.render', { chat_type: 'group' })
+    personaPluginFound = !!(r && r.ok)
+  } catch {
+    personaPluginFound = false
+  }
+  return personaPluginFound
+}
+
+async function seedFallbackPersonas() {
+  for (const [name, content] of Object.entries(FALLBACK_PERSONAS)) {
+    await db('exec',
+      `INSERT INTO ai_persona (name, content, ts) VALUES (?, ?, ?)
+       ON CONFLICT(name) DO NOTHING`, [name, content, now()])
+  }
+}
+
+async function savePersona(name, content) {
+  await db('exec',
+    `INSERT INTO ai_persona (name, content, ts) VALUES (?, ?, ?)
+     ON CONFLICT(name) DO UPDATE SET content = excluded.content, ts = excluded.ts`,
+    [name, content, now()])
+}
+
+async function getPersona(name) {
+  const r = await db('get', `SELECT name, content FROM ai_persona WHERE name = ?`, [name])
+  return r.row || null
+}
+
+async function listPersonas() {
+  const r = await db('all', `SELECT name, content FROM ai_persona ORDER BY name`)
+  return r.rows || []
+}
+
+async function currentPersonaFor(chatType) {
+  const scope = chatType === 'private' ? 'private' : 'group'
+  const name = (await host.sharedGet('ai-chat.persona_' + scope)) ||
+    (scope === 'private' ? '私聊' : '群聊')
+  const p = await getPersona(name)
+  return { scope, name: p?.name || name, content: p?.content || '' }
+}
+
+async function personaCommand(session, text) {
+  const reply = (m) => host.reply(chatOf(session), m)
+  const rest = text.replace(/^人设\s*/, '').trim()
+  const parts = rest.split(/\s+/)
+  const sub = (parts[0] || '').toLowerCase()
+  const scope = session.chat_type === 'private' ? 'private' : 'group'
+  const scopeName = scope === 'private' ? '私聊' : '本群'
+
+  if (!sub || sub === '看' || sub === '当前' || sub === '列表') {
+    const cur = await currentPersonaFor(session.chat_type)
+    const list = await listPersonas()
+    const lines = [`${scopeName}当前人设：「${cur.name}」`]
+    if (cur.content) lines.push(cur.content)
+    lines.push('', `全部人设（${list.length}）：`)
+    for (const p of list) lines.push(`· ${p.name}${p.name === cur.name ? '  ← 当前' : ''}`)
+    lines.push('', '切换：/人设 切换 <名字>', '新建/修改：/人设 新建 <名字> <描述>')
+    await reply(lines.join('\n'))
+    return
+  }
+
+  if (sub === '切换' || sub === '用' || sub === '切') {
+    const name = rest.slice(sub.length).trim()
+    if (!name) return reply('用法：/人设 切换 <名字>（先 /人设 看名单）')
+    const p = await getPersona(name)
+    if (!p) {
+      const names = (await listPersonas()).map((x) => x.name).join('、')
+      return reply(`没有人设「${name}」\n现有：${names}`)
+    }
+    await host.sharedSet('ai-chat.persona_' + scope, name)
+    await reply(`${scopeName}已切换到「${name}」`)
+    return
+  }
+
+  if (sub === '新建' || sub === '改' || sub === '修改') {
+    const body = rest.slice(sub.length).trim()
+    const sp = body.search(/\s/)
+    const name = sp < 0 ? body : body.slice(0, sp)
+    const content = sp < 0 ? '' : body.slice(sp + 1).trim()
+    if (!name) return reply('用法：/人设 新建 <名字> <描述>')
+    const existed = await getPersona(name)
+    if (!content) {
+      if (!existed) return reply(`人设「${name}」不存在，新建要带描述：/人设 新建 ${name} <描述>`)
+      return reply(`「${name}」当前描述：\n${existed.content}\n\n要改就：/人设 新建 ${name} <新描述>`)
+    }
+    await savePersona(name, content)
+    await reply(existed ? `人设「${name}」已更新` : `人设「${name}」已创建（用 /人设 切换 ${name} 启用）`)
+    return
+  }
+
+  if (sub === '删除' || sub === '删') {
+    const name = rest.slice(sub.length).trim()
+    if (!name) return reply('用法：/人设 删除 <名字>')
+    const existed = await getPersona(name)
+    if (!existed) return reply(`没有人设「${name}」`)
+    if (FALLBACK_PERSONAS[name]) return reply('内置人设不能删（可以改内容）')
+    await db('exec', `DELETE FROM ai_persona WHERE name = ?`, [name])
+    for (const sc of ['group', 'private']) {
+      const cur = await currentPersonaFor(sc)
+      if (cur.name === name) await host.sharedSet('ai-chat.persona_' + sc, sc === 'private' ? '私聊' : '群聊')
+    }
+    await reply(`人设「${name}」已删除`)
+    return
+  }
+
+  await reply('可用：/人设 看 · /人设 切换 <名字> · /人设 新建 <名字> <描述> · /人设 删除 <名字>')
+}
+
+// 按相关度召回个人记忆。
+//
+// 先拿最近 base 条保证"记得住近况"，再用当前消息里的词去匹配历史，
+// 匹配到就多带（最多 maxN 条）。不调模型，纯 SQL。
+async function recallPersonal(session, text, base, maxN) {
+  const exclude = { chat_type: session.chat_type, chat_id: session.chat_id }
+  const seen = new Set()
+  const out = []
+
+  const push = (rows) => {
+    for (const r of rows || []) {
+      if (out.length >= maxN) return
+      if (seen.has(r.content)) continue
+      seen.add(r.content)
+      out.push(r)
+    }
+  }
+
+  if (base > 0) {
+    push(await personalHistory(session.user_id, base, exclude))
+  }
+
+  const words = []
+  const clean = String(text || '').replace(/[^\p{Script=Han}a-zA-Z0-9]/gu, ' ').trim()
+  for (const w of clean.split(/\s+/)) {
+    if (!w) continue
+    if (/^[a-zA-Z0-9]+$/.test(w)) {
+      if (w.length >= 2) words.push(w)
+    } else {
+      for (let i = 0; i + 1 < w.length && words.length < 6; i += 2) words.push(w.slice(i, i + 2))
+      if (w.length >= 2) words.push(w)
+    }
+  }
+
+  if (words.length && session.user_id) {
+    const uniq = [...new Set(words)].slice(0, 6)
+    const cond = uniq.map(() => 'content LIKE ?').join(' OR ')
+    const r = await db('all',
+      `SELECT content, ts, chat_type, chat_id FROM ai_message
+       WHERE user_id = ? AND role = 'user'
+         AND NOT (chat_type = ? AND chat_id = ?)
+         AND (${cond})
+       ORDER BY id DESC LIMIT ?`,
+      [session.user_id, exclude.chat_type, exclude.chat_id, ...uniq.map((w) => `%${w}%`), maxN])
+    push(r.rows)
+  }
+
+  return out
+}
+
+// 用模型描述一张图（私聊记忆用）。失败返回空串，不阻塞记忆。
+async function describeImage(url) {
+  try {
+    const dataURL = await toDataURL(url)
+    const r = await host.capability('llm.chat', {
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'text', text: '用一句话客观描述这张图（是谁/在做什么/什么东西）。不要评价，不要寒暄。' },
+          { type: 'image_url', image_url: { url: dataURL } },
+        ],
+      }],
+    })
+    if (!r?.ok) return ''
+    return String(r.data?.text || '').trim().slice(0, 120)
+  } catch (e) {
+    host.log('debug', '识图失败: ' + e.message)
+    return ''
+  }
+}
 
 // ---------------------------------------------------------------- 知识库
 
@@ -257,8 +472,13 @@ async function unbanTerm(chatType, chatID, term) {
 async function learnGroups(limit = 50) {
   const r = await db(
     'all',
-    `SELECT chat_type, chat_id, COUNT(*) AS n FROM ai_message
-     WHERE role = 'user' GROUP BY chat_type, chat_id
+    // 只统计"能学的"：空内容和 [图片] 不算，不然下拉显示 61 条、
+    // 下面统计却说 30 条，对不上。
+    `SELECT chat_type, chat_id,
+            SUM(content <> '' AND content <> '[图片]') AS n
+     FROM ai_message WHERE role = 'user'
+     GROUP BY chat_type, chat_id
+     HAVING n > 0
      ORDER BY n DESC LIMIT ?`,
     [limit],
   )
@@ -385,48 +605,55 @@ function cleanText(t) {
     .replace(/[^\p{Script=Han}a-zA-Z0-9]/gu, '')
 }
 
-// 高频词组：1-4 字。
+// 群黑话 = **反复出现的短句**。
 //
-// 阈值跟着样本量走：只有十几条消息时要求 2 次，几百条时要求 5 次。
-// 固定阈值 3 的问题很实际——"草"在 13 条里出现 3 次也会被漏掉（它是单字，
-// 原来的循环从 n=2 开始根本没统计单字），而群黑话恰恰大量是单字。
+// 为什么不用 n-gram：中文没分词，"怎么/什么/学校长"会被切成
+// 「怎」「什」「校长」这种碎片，统计出来全是噪音（用户原话："学的什么玩意"）。
+//
+// 改成：只看长度 ≤8 的短消息，整句计数，出现 ≥2 次才算。
+// 群里的黑话本来就是这样——"草""确实""笑死""离谱"。
+const SLANG_SINGLE = new Set('草靠淦乐笑哈6')
+
 function topPhrases(texts, limit = 8) {
-  const minCount = Math.max(2, Math.min(5, Math.round(texts.length * 0.05)))
-  const minCharCount = Math.max(3, minCount + 1)
-
   const counts = new Map()
-  for (const raw of texts) {
+  const where = new Map() // 词 → 出现在第几条，用于"至少两条不同消息"
+  texts.forEach((raw, idx) => {
     const s = cleanText(raw)
-    for (let n = 1; n <= 4; n++) {
-      for (let i = 0; i + n <= s.length; i++) {
-        const g = s.slice(i, i + n)
-        counts.set(g, (counts.get(g) || 0) + 1)
-      }
-    }
+    if (!s) return
+    const n = [...s].length
+    if (n > 8) return // 长消息里的词不算黑话，那是正常聊天
+    if (n === 1 && !SLANG_SINGLE.has(s)) return // 单字只认语气/梗字
+    if (STOP_WORDS.has(s)) return
+    counts.set(s, (counts.get(s) || 0) + 1)
+    if (!where.has(s)) where.set(s, new Set())
+    where.get(s).add(idx)
+  })
+
+  const repeated = [...counts]
+    .filter(([w, c]) => c >= 2 && (where.get(w)?.size || 0) >= 2)
+    .sort((a, b) => b[1] - a[1] || a[0].length - b[0].length)
+    .map(([w]) => w)
+
+  // 再补一层：常见网络用语只要在这个群出现 ≥2 次就算（中文没法分词，
+  // 但"草/笑死/离谱/破防"这些是有确定写法的，用词表识别比切词可靠得多）
+  for (const w of COMMON_SLANG) {
+    if (repeated.includes(w)) continue
+    const n = texts.reduce((acc, t) => acc + (String(t).includes(w) ? 1 : 0), 0)
+    if (n >= 2) repeated.push(w)
   }
 
-  const arr = [...counts]
-    .filter(([g, c]) => {
-      if (/^\d+$/.test(g) || STOP_WORDS.has(g)) return false
-      // 单字：阈值更高，且排除"的了是"这类常用字
-      if ([...g].length === 1) return c >= minCharCount && !STOP_CHARS.has(g)
-      return c >= minCount
-    })
-    // 长一点的词更有信息量：count * 长度
-    .sort((a, b) => b[1] * b[0].length - a[1] * a[0].length)
-
-  // 去冗余：e.g. 已经选了「群黑话」就不再单列「黑话」
-  const picked = []
-  for (const [g, c] of arr) {
-    if (picked.some((p) => p.includes(g) || g.includes(p))) continue
-    picked.push(g)
-    if (picked.length >= limit) break
-  }
-  return picked
+  return repeated.slice(0, limit)
 }
 
-// keepBanned=true 时额外返回 all（含被屏蔽的），给面板展示/恢复用；
-// 正常回复只用过滤后的 slang。
+// 常见网络用语（不需要分词就能识别的）
+const COMMON_SLANG = [
+  '草', '靠', '淦', '笑死', '离谱', '确实', '绝了', '牛逼', '绷不住', '破防',
+  '麻了', '摆烂', '抽象', '社死', '好家伙', '逆天', '真香', '无语', '急了', '典',
+  '寄', '润', '卷', '躺平', '干饭', '摸鱼', '乐子', '难绷', '笑不活了', '尊嘟',
+  '哒咩', '栓Q', '家人们', '谁懂啊', '我哭死', '狠狠', '开摆', '啊对对对', '贴贴',
+  '乐', '哈', '6', '拉了', '稳', '秀', '离谱他妈',
+]
+
 async function groupStyle(chatType, chatID, limit = 200, keepBanned = false) {
   const r = await db(
     'all',
@@ -608,13 +835,29 @@ async function buildMessages(session, userText, extraPrompt, images) {
   // 系统提示词由 ai-persona 插件统一提供（人设、自称、风格都在那边）。
   // 拿不到（没装/挂了）就用一句兜底，别让对话整个失败。
   let personaLine = ''
+  let personaFromPlugin = false
   try {
-    const pr = await host.capability('persona.render', { chat_type: session.chat_type })
-    if (pr?.ok && pr.data?.system) personaLine = pr.data.system
+    const pr = await host.capability('persona.render', {
+      chat_type: session.chat_type,
+      chat_id: session.chat_id,
+    })
+    if (pr?.ok && pr.data?.system) {
+      personaLine = pr.data.system
+      personaFromPlugin = true
+    }
   } catch (e) {
     host.log('debug', 'persona.render 不可用: ' + e.message)
   }
-  const parts = [personaLine || '你是一个群聊里的朋友，说话自然简短。']
+  if (!personaLine) {
+    // 没人设插件：用本插件自己的设置 + 内置人设，保证"能设人设"
+    const cur = await currentPersonaFor(session.chat_type)
+    const own = [settings.system_prompt || '你是一个群聊里的朋友，说话自然简短。']
+    if (settings.bot_name) own.push(`你的名字是「${settings.bot_name}」。`)
+    if (cur.content) own.push(`当前人设「${cur.name}」：${cur.content}`)
+    if (settings.speaking_style) own.push(`说话风格：${settings.speaking_style}`)
+    personaLine = own.join('\n')
+  }
+  const parts = [personaLine]
 
   // 好感度：影响语气
   if (session.user_id) {
@@ -623,14 +866,33 @@ async function buildMessages(session, userText, extraPrompt, images) {
       const score = typeof aff.score === 'number' ? aff.score : aff.affinity
       const level = aff.level || aff.title
       if (score !== undefined) {
-        parts.push(`你对当前说话的人好感度是 ${score}${level ? `（${level}）` : ''}，据此调整语气。`)
+        const tone = aff.tone || 'normal'
+        const base = aff.base
+        let line
+        if (aff.is_master) {
+          line = `这是你的主人，好感度是满的（${score}）。他骂你、损你也当调情，` +
+            `别真的生气，最多嘴上委屈一下然后贴上去。`
+        } else if (tone === 'cold') {
+          line = `你对这个人好感度 ${score}（基础 ${base}），关系很差。` +
+            `说话阴阳怪气、敷衍、带刺，别热情。`
+        } else if (tone === 'cool') {
+          line = `你对这个人好感度 ${score}（基础 ${base}），有点冷淡。话少一点、别主动贴。`
+        } else if (tone === 'warm') {
+          line = `你对这个人好感度 ${score}，很亲近。语气放松、可以黏一点。`
+        } else {
+          line = `你对这个人好感度 ${score}，正常朋友语气。`
+        }
+        parts.push(line)
+        host.log('debug', `好感度 user=${session.user_id} score=${score} tone=${tone} master=${!!aff.is_master}`)
       }
     }
   }
 
-  // 群语气 / 黑话：学群友怎么说话（纯统计，不花 token）
+  // 群语气 / 黑话：**人设插件在场时由它拼**（它拿得到同一份数据），
+  // 这里只在没有插件时兜底，避免同一段提示词出现两次。
   try {
-    const gs = await groupStyle(session.chat_type, session.chat_id)
+    if (!personaFromPlugin) {
+      const gs = await groupStyle(session.chat_type, session.chat_id)
     const us = await userStyle(session.user_id)
     const hints = styleHints(gs, us)
     if (hints.length) parts.push(...hints)
@@ -645,9 +907,13 @@ async function buildMessages(session, userText, extraPrompt, images) {
         parts.push('群黑话约定：' + used.map(([t, m]) => `${t} = ${m}`).join('；') + '。')
       }
     }
+    }
   } catch (e) {
     host.log('debug', '语气统计跳过: ' + e.message)
   }
+
+  // 聊天风格：真人聊天很少打句号，短句、用空格隔开
+  parts.push('回复像手机聊天：短句，尽量别用句号，用空格或换行断开，别写成文章。')
 
   // 她的生活：让回复带上"此刻在干嘛"（装了就生效，没装不影响）
   const life = await optionalCapability('life.now')
@@ -655,6 +921,9 @@ async function buildMessages(session, userText, extraPrompt, images) {
   if (life && life.text) {
     parts.push(`你此刻的状态：${life.text}。回复必须符合这个状态——在忙就短一点，睡着被叫醒就迷糊一点。`)
   }
+
+  // 时间感：让话题符合时段（中午聊吃啥、晚上聊下班，别半夜问午饭）
+  parts.push(timeHint())
 
   if (extraPrompt) parts.push(extraPrompt)
 
@@ -670,22 +939,35 @@ async function buildMessages(session, userText, extraPrompt, images) {
   const messages = [{ role: 'system', content: parts.join('\n') }]
 
   // ① 个人记忆：这个人以前说过什么（跨群）
-  const personalLimit = Number(settings.personal_memory) || 200
-  const personal = await personalHistory(session.user_id, Math.min(personalLimit, 10))
+  // 动态召回：平常只带几条；聊到相关话题（提到人名/事物）才多带。
+  // 固定带 10 条的话，闲聊每轮都在为无关记忆付 token。
+  const base = Math.max(0, Math.min(10, Number(settings.memory_base) || 3))
+  const maxN = Math.max(base, Math.min(30, Number(settings.memory_max) || 15))
+  const personal = await recallPersonal(session, userText, base, maxN)
+  host.log('debug', `记忆召回 n=${personal.length} base=${base} max=${maxN}`)
   if (personal.length) {
-    const lines = personal.map((m) => '- ' + m.content.replace(/\n/g, ' ')).join('\n')
+    const lines = personal
+      .map((m) => `- [${m.chat_type === 'private' ? '私聊' : '群'}] ${m.content.replace(/\n/g, ' ')}`)
+      .join('\n')
     messages.push({
       role: 'system',
-      content: `关于当前说话的人，他以前说过：\n${lines}`,
+      content:
+        `关于当前说话的人（同一个 QQ，可能来自别的群/私聊），他最近说过：\n${lines}\n` +
+        '如果聊到相关话题可以自然接上，但别主动抖机灵复述。',
     })
   }
 
   // ② 群上下文：最近这段对话
-  const ctxSize = Math.max(4, Number(settings.context_size) || 20)
+  // 群里只带最近 N 条（默认 20）：带整段历史既费 token 又容易跑题
+  const ctxSize = Math.max(4, Math.min(50, Number(settings.context_size) || 20))
   const history = await chatHistory(session.chat_type, session.chat_id, ctxSize)
   const names = await nicknamesOf(history.map((m) => m.user_id))
 
   for (const m of history) {
+    // 群里的纯图片占位不进上下文：占 token 又提供不了信息
+    // （私聊的图片会存描述，不会走到这里）
+    if (session.chat_type !== 'private' && m.role === 'user' && m.content === '[图片]') continue
+
     if (m.role === 'assistant') {
       messages.push({ role: 'assistant', content: m.content })
     } else {
@@ -782,22 +1064,233 @@ function shouldTrigger(session) {
   // 纯图片消息 text 是空的，但仍然是消息，不能在这里被丢掉
   const hasImage = imageURLsOf(session).length > 0
   if (!text && !hasImage) return false
+  // 私聊：每条都回
   if (session.chat_type === 'private') return true
-  if (session.mentioned) return true
 
-  const mode = settings.trigger_mode || 'mention'
-  if (mode === 'mention') return false
-  if (mode === 'always') return true
+  // 被 @：按设置必回（和"随机插话"互不排斥）
+  if (session.mentioned) return settings.reply_on_mention !== false
+
+  // 没 @ 的群聊：随机插话（0 = 不插话）
+  const chance = Math.max(0, Math.min(100,
+    Number(settings.group_chance_pct ?? settings.trigger_prob) || 0))
+  if (chance <= 0) return false
 
   const key = session.chat_type + ':' + session.chat_id
   const cd = Math.max(0, Number(settings.cooldown) || 0) * 1000
   if (cd > 0 && lastTrigger.has(key) && Date.now() - lastTrigger.get(key) < cd) return false
 
-  const p = Math.max(0, Math.min(100, Number(settings.trigger_prob) || 0))
-  return Math.random() * 100 < p
+  return Math.random() * 100 < chance
 }
 
 // ---------------------------------------------------------------- 回复
+
+// ---------------------------------------------------------------- 记忆管理
+
+async function memoryGroups() {
+  const r = await db('all',
+    `SELECT chat_type, chat_id, COUNT(*) AS n, MAX(ts) AS last
+     FROM ai_message GROUP BY chat_type, chat_id ORDER BY last DESC LIMIT 50`)
+  return r.rows || []
+}
+
+async function memoryRecent(chatType, chatID, limit = 20) {
+  const r = await db('all',
+    `SELECT id, role, user_id, content, ts FROM ai_message
+     WHERE chat_type = ? AND chat_id = ? ORDER BY id DESC LIMIT ?`,
+    [chatType, chatID, Math.max(1, Math.min(100, limit | 0 || 20))])
+  return r.rows || []
+}
+
+async function memoryDelete(id) {
+  const r = await db('exec', `DELETE FROM ai_message WHERE id = ?`, [id])
+  return r.affected > 0
+}
+
+async function memoryClear(chatType, chatID) {
+  const r = await db('exec', `DELETE FROM ai_message WHERE chat_type = ? AND chat_id = ?`, [chatType, chatID])
+  return r.affected || 0
+}
+
+async function memoryClearKw(chatType, chatID, kw) {
+  const r = await db('exec',
+    `DELETE FROM ai_message WHERE chat_type = ? AND chat_id = ? AND content LIKE ?`,
+    [chatType, chatID, `%${kw}%`])
+  return r.affected || 0
+}
+
+function isAdmin(session) {
+  return session.role === 'owner' || session.role === 'admin'
+}
+
+async function memoryCommand(session, text) {
+  const reply = (m) => host.reply(chatOf(session), m)
+  const rest = text.replace(/^记忆\s*/, '').trim()
+  const parts = rest.split(/\s+/)
+  const sub = (parts[0] || '').toLowerCase()
+  const ct = session.chat_type
+  const cid = session.chat_id
+
+  if (!sub) {
+    const rows = await memoryRecent(ct, cid, 6)
+    const total = (await memoryGroups()).find((g) => g.chat_type === ct && String(g.chat_id) === String(cid))
+    const lines = [`这个会话记住了 ${total ? total.n : 0} 条（最多留 ${settings.memory_limit || 1000} 条）`]
+    if (rows.length) {
+      lines.push('最近几条：')
+      for (const m of rows.slice().reverse()) {
+        const who = m.role === 'user' ? '你' : '我'
+        lines.push(`· ${who}：${String(m.content).slice(0, 30)}`)
+      }
+    } else {
+      lines.push('（还是空的）')
+    }
+    lines.push('', '/记忆 清空（管理员）会删掉这个会话的全部记忆')
+    await reply(lines.join('\n'))
+    return
+  }
+
+  if (sub === '清空' || sub === '删') {
+    if (!isAdmin(session)) return reply('只有管理员能清记忆')
+    if (sub === '清空') {
+      const n = await memoryClear(ct, cid)
+      return reply(`已清空这个会话的 ${n} 条记忆（我跟你之间会重新认识）`)
+    }
+    const kw = parts.slice(1).join(' ').trim()
+    if (!kw) return reply('用法：/记忆 删 <关键词>')
+    const n = await memoryClearKw(ct, cid, kw)
+    return reply(n ? `删掉 ${n} 条包含「${kw}」的记忆` : `没有包含「${kw}」的记忆`)
+  }
+
+  await reply('可用：/记忆 看 · /记忆 清空（管理员）· /记忆 删 <关键词>（管理员）')
+}
+
+// ---------------------------------------------------------------- 时间感
+
+// 让模型知道现在几点、该聊什么。不然它会在半夜问"中午吃了吗"。
+function timeHint() {
+  const d = new Date()
+  const h = d.getHours()
+  const mm = String(d.getMinutes()).padStart(2, '0')
+  const wd = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][d.getDay()]
+  const now = `${wd} ${String(h).padStart(2, '0')}:${mm}`
+
+  let topic = ''
+  if (h >= 5 && h < 9) topic = '早上：可以聊起床、早餐、通勤；别提午饭和晚饭'
+  else if (h >= 9 && h < 11) topic = '上午：聊上班/上课；别问睡没睡'
+  else if (h >= 11 && h < 13) topic = '中午：聊午饭吃什么、午休'
+  else if (h >= 13 && h < 17) topic = '下午：可以聊犯困、摸鱼、下午茶；别问午饭吃了没'
+  else if (h >= 17 && h < 19) topic = '傍晚：聊下班、晚饭'
+  else if (h >= 19 && h < 23) topic = '晚上：聊晚饭、休息、追剧打游戏；别问午饭'
+  else topic = '深夜：这个点该睡了；别聊午饭，别显得精神抖擞'
+
+  return `现在是 ${now}。${topic}。对方问时间就按这个答。`
+}
+
+// ---------------------------------------------------------------- 分段发送
+
+// 真人聊天一般不打句号，短句，用空格或换行隔开。
+// 所以切分**不靠标点**：优先在空格/换行处断，没有就按长度切。
+function splitReply(text, maxChars, wantParts) {
+  const s = String(text).trim()
+  if (!s) return []
+
+  const max = Math.max(8, maxChars | 0 || 30)
+  const n = Math.max(1, Math.min(5, wantParts | 0 || 1))
+
+  // **换行本身就是人类的分段**：模型写了多行，就按行发，别塞进一条。
+  const paras = s.split(/\n+/).map((x) => x.trim()).filter(Boolean)
+  if (paras.length > 1) {
+    if (paras.length > 5) {
+      const head = paras.slice(0, 4)
+      head.push(paras.slice(4).join(' '))
+      return head
+    }
+    return paras
+  }
+
+  if (n === 1) return [s]
+
+  // 目标多条 + 有空格：按空格分组成 n 条。
+  // 光看长度的话，短回复（"嗯 么么 睡吧"）永远只发一条，概率形同虚设。
+  const tokens = s.split(/\s+/).filter(Boolean)
+  if (tokens.length >= 2 && tokens.length >= n) {
+    const parts = []
+    let i = 0
+    let left = n
+    while (i < tokens.length && left > 0) {
+      const remain = tokens.length - i
+      const take = Math.max(1, Math.ceil(remain / left))
+      let chunk = tokens.slice(i, i + take).join(' ')
+      // 单条超长：把词让给下一组
+      while (chunk.length > max && take > 1) {
+        chunk = tokens.slice(i, i + take - 1).join(' ')
+        break
+      }
+      parts.push(chunk)
+      i += take
+      left--
+    }
+    if (i < tokens.length && parts.length) {
+      parts[parts.length - 1] = parts[parts.length - 1] + ' ' + tokens.slice(i).join(' ')
+    }
+    return parts.filter(Boolean)
+  }
+
+  if (s.length <= max) return [s]
+
+  const parts = []
+  let rest = s
+  let left = n
+
+  while (left > 1 && rest.length > max * 0.6) {
+    const target = Math.min(max, Math.ceil(rest.length / left))
+    let cut = -1
+
+    // 在目标位置附近找空白（空格/换行）当断点，最多偏离 40%
+    const window = Math.floor(target * 0.4)
+    for (let d = 0; d <= window; d++) {
+      const back = target - d
+      const fwd = target + d
+      if (back > 0 && /\s/.test(rest[back - 1])) { cut = back; break }
+      if (fwd < rest.length && /\s/.test(rest[fwd - 1])) { cut = fwd; break }
+    }
+    if (cut <= 0) cut = target // 没有空白就按长度硬切
+
+    parts.push(rest.slice(0, cut).trim())
+    rest = rest.slice(cut).trim()
+    left--
+  }
+  if (rest) parts.push(rest)
+  return parts.filter(Boolean)
+}
+
+// 按设置里的概率决定这次分几条
+function targetParts() {
+  const weights = [1, 2, 3, 4, 5].map((i) => Math.max(0, Number(settings['split_pct_' + i]) || 0))
+  const total = weights.reduce((a, b) => a + b, 0)
+  if (total <= 0) return 1
+  let r = Math.random() * total
+  for (let i = 0; i < weights.length; i++) {
+    r -= weights[i]
+    if (r < 0) return i + 1
+  }
+  return 1
+}
+
+async function sendSplit(chat, text) {
+  const enabled = settings.split_enabled !== false
+  const parts = enabled
+    ? splitReply(text, Number(settings.split_max_chars) || 30, targetParts())
+    : [text]
+
+  for (let i = 0; i < parts.length; i++) {
+    if (i > 0) {
+      const gap = Math.max(120, Math.min(3000, Number(settings.split_delay_ms) || 500))
+      await new Promise((res) => setTimeout(res, gap))
+    }
+    await host.reply(chat, parts[i])
+  }
+  return parts.length
+}
 
 async function respond(session, userText, extraPrompt, images) {
   const t0 = Date.now()
@@ -839,8 +1332,8 @@ async function respond(session, userText, extraPrompt, images) {
   if (delay > 0) await new Promise((res) => setTimeout(res, Math.min(delay, 3000)))
 
   try {
-    await host.reply(chatOf(session), text)
-    host.log('info', `respond 已发送 耗时=${Date.now() - t0}`)
+    const n = await sendSplit(chatOf(session), text)
+    host.log('info', `respond 已发送 parts=${n} 耗时=${Date.now() - t0}`)
   } catch (err) {
     host.log('error', '发送失败: ' + err.message)
     return { ok: false, error: err.message }
@@ -881,17 +1374,23 @@ serve({
 
     const imgsForStore = imageURLsOf(session)
     const storeText = text || (imgsForStore.length ? '[图片]' : '')
-    // 命令（/人设、/黑话…）不算聊天语料：存进去会把语气统计带偏，
-    // 而且它们本来也不是"群友在说话"。
-    if (storeText && !session.has_prefix) {
-      try {
-        await remember(session, 'user', storeText)
-        host.log('info', 'H3 remember 完成')
-      } catch (err) {
-        host.log('warn', '记录失败: ' + err.message)
-      }
+    // 记忆统一由 observe_message 写（那条路径能看到所有消息，
+    // 包括被 keyword-reply 之类抢先认领的），这里不再重复存。
+
+
+    // 人设命令：装了 ai-persona 就让位（它的人设功能更完整），
+    // 没装就用本插件内置的那套（老版本行为，别让用户没法设人设）
+    if (/^人设(\s|$)/.test(text)) {
+      if (await hasPersonaPlugin()) return { handled: false }
+      await personaCommand(session, text)
+      return { handled: true }
     }
 
+    // 记忆管理
+    if (/^记忆(\s|$)/.test(text)) {
+      await memoryCommand(session, text)
+      return { handled: true }
+    }
 
     // 语气 / 黑话
     if (/^(语气|黑话)(\s|$)/.test(text)) {
@@ -917,10 +1416,43 @@ serve({
     return { handled: true }
   },
 
+  // 框架把每条消息都抄一份过来（即使别的插件已认领）。
+  // 只存文字/图片占位，命令不存（前缀消息不是聊天语料）。
+  async observe_message({ session }) {
+    try {
+      await ensureReady()
+      if (session.has_prefix) return {}
+      const text = (session.text || '').trim()
+      const imgs = imageURLsOf(session)
+
+      // 私聊里的图片：先让模型看一眼，把**描述**存进记忆。
+      // 这样过一会儿问"我刚发了什么图"还能答上来，而不是只留个 [图片]。
+      let picDesc = ''
+      if (session.chat_type === 'private' && imgs.length) {
+        picDesc = await describeImage(imgs[0])
+      }
+
+      let content = text
+      if (picDesc) {
+        content = text ? `${text}（图片：${picDesc}）` : `[图片] ${picDesc}`
+      } else if (!content && imgs.length) {
+        content = '[图片]'
+      }
+      if (!content) return {}
+
+      await remember(session, 'user', content)
+      return {}
+    } catch (e) {
+      host.log('debug', 'observe 记录失败: ' + e.message)
+      return {}
+    }
+  },
+
   async call_tool({ name, args }) {
     await ensureReady()
     if (name === 'ai.chat') return await toolChat(args)
     if (name === 'ai.learn') return await toolLearn(args)
+    if (name === 'ai.memory') return await toolMemory(args)
     return { ok: false, error: `未知能力 ${name}` }
   },
 
@@ -985,6 +1517,37 @@ async function toolChat(args) {
 }
 
 // 面板用的"学到什么"接口：看、屏蔽、恢复、管人工词条。
+async function toolMemory(args) {
+  const action = String(args?.action || '')
+  const chatType = String(args?.chat_type || 'group')
+  const chatID = Number(args?.chat_id || 0)
+
+  try {
+    if (action === 'groups') {
+      return { ok: true, data: { groups: await memoryGroups() } }
+    }
+    if (action === 'recent') {
+      return { ok: true, data: { messages: await memoryRecent(chatType, chatID, Number(args?.limit) || 20) } }
+    }
+    if (action === 'delete') {
+      const id = Number(args?.id || 0)
+      if (!id) return { ok: false, error: '需要 id' }
+      return { ok: true, data: { deleted: await memoryDelete(id) } }
+    }
+    if (action === 'clear') {
+      return { ok: true, data: { cleared: await memoryClear(chatType, chatID) } }
+    }
+    if (action === 'clear_kw') {
+      const kw = String(args?.keyword || '').trim()
+      if (!kw) return { ok: false, error: '需要 keyword' }
+      return { ok: true, data: { deleted: await memoryClearKw(chatType, chatID, kw) } }
+    }
+    return { ok: false, error: `未知 action: ${action}` }
+  } catch (e) {
+    return { ok: false, error: e.message }
+  }
+}
+
 async function toolLearn(args) {
   const action = String(args?.action || '')
   const chatType = String(args?.chat_type || 'group')

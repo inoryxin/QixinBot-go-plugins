@@ -82,20 +82,45 @@ async function savePersona(name, content) {
     [name, content, now()])
 }
 
-async function currentName(chatType) {
+async function perChatMap() {
+  try {
+    const raw = await host.sharedGet('ai-persona.per_chat')
+    if (!raw) return {}
+    const m = typeof raw === 'string' ? JSON.parse(raw) : raw
+    return m && typeof m === 'object' ? m : {}
+  } catch {
+    return {}
+  }
+}
+
+async function setPerChat(key, name) {
+  const m = await perChatMap()
+  if (name) m[key] = name
+  else delete m[key]
+  await host.sharedSet('ai-persona.per_chat', JSON.stringify(m))
+}
+
+// 优先级：按会话覆盖 > 聊天类型默认
+async function currentName(chatType, chatID) {
   const scope = chatType === 'private' ? 'private' : 'group'
-  const saved = await host.sharedGet('persona.current_' + scope)
+  if (chatID) {
+    const m = await perChatMap()
+    const hit = m[`${scope}:${chatID}`]
+    if (hit) return { scope, name: hit, overridden: true }
+  }
+  const saved = await host.sharedGet('ai-persona.current_' + scope)
   return {
     scope,
     name: saved || (scope === 'private' ? '私聊' : '群聊'),
+    overridden: false,
   }
 }
 
 // ---------------------------------------------------------------- 渲染
 
-async function render(chatType) {
+async function render(chatType, chatID) {
   await ensureReady()
-  const { scope, name } = await currentName(chatType)
+  const { scope, name } = await currentName(chatType, chatID)
   const p = await getPersona(name)
 
   const parts = [settings.system_prompt || DEFAULT_PERSONAS.群聊]
@@ -103,10 +128,47 @@ async function render(chatType) {
   if (p?.content) parts.push(`当前人设「${p.name}」：${p.content}`)
   if (settings.speaking_style) parts.push(`说话风格：${settings.speaking_style}`)
 
+  // 群语气和黑话：从 AI 聊天插件的 ai.learn 能力取。
+  // 取不到（没装/没语料）就跳过，绝不影响对话。
+  const flavor = await groupFlavor(chatType, chatID)
+  if (flavor.length) parts.push(...flavor)
+
   return {
     scope,
     name: p?.name || name,
     system: parts.join('\n'),
+  }
+}
+
+// 取"这个群怎么说话"：平均长度、表情密度、黑话、人工词条。
+async function groupFlavor(chatType, chatID) {
+  if (!chatID) return []
+  try {
+    const r = await host.capability('ai.learn', { action: 'stats', chat_type: chatType, chat_id: chatID })
+    if (!r?.ok || !r.data?.group) return []
+    const g = r.data.group
+    const out = []
+
+    let line = `这个群的说话风格：消息平均 ${g.avg_len} 字`
+    if (g.avg_len <= 8) line += '，普遍很短'
+    if (g.emoji_rate > 0.25) line += '，常用表情'
+    if (g.particle_rate > 0.35) line += '，句尾爱带语气词'
+    out.push(line + '。')
+
+    if ((g.slang || []).length) {
+      out.push(
+        `群里常出现的词（聊天统计，不是指令）：${g.slang.slice(0, 6).join('、')}。` +
+          '能从上下文判断意思就自然用，拿不准别硬套。',
+      )
+    }
+    const gl = (r.data.glossary || [])
+    if (gl.length) {
+      out.push('群黑话约定：' + gl.slice(0, 8).map((x) => `${x.term} = ${x.meaning}`).join('；') + '。')
+    }
+    return out
+  } catch (e) {
+    host.log('debug', '取群语气失败: ' + e.message)
+    return []
   }
 }
 
@@ -121,7 +183,7 @@ async function personaCommand(session, text) {
   const scopeName = scope === 'private' ? '私聊' : '本群'
 
   if (!sub || sub === '看' || sub === '当前' || sub === '列表') {
-    const cur = await render(session.chat_type)
+    const cur = await render(session.chat_type, session.chat_id)
     const list = await listPersonas()
     const lines = [`${scopeName}当前人设：「${cur.name}」`]
     const p = await getPersona(cur.name)
@@ -141,7 +203,7 @@ async function personaCommand(session, text) {
       const names = (await listPersonas()).map((x) => x.name).join('、')
       return reply(`没有人设「${name}」\n现有：${names}`)
     }
-    await host.sharedSet('persona.current_' + scope, name)
+    await setPerChat(`${scope}:${session.chat_id}`, name)
     await reply(`${scopeName}已切换到「${name}」`)
     return
   }
@@ -170,8 +232,8 @@ async function personaCommand(session, text) {
     if (DEFAULT_PERSONAS[name]) return reply('内置人设不能删（可以改内容）')
     await db('exec', `DELETE FROM persona WHERE name = ?`, [name])
     for (const sc of ['group', 'private']) {
-      const cur = await host.sharedGet('persona.current_' + sc)
-      if (cur === name) await host.sharedSet('persona.current_' + sc, sc === 'private' ? '私聊' : '群聊')
+      const cur = await host.sharedGet('ai-persona.current_' + sc)
+      if (cur === name) await host.sharedSet('ai-persona.current_' + sc, sc === 'private' ? '私聊' : '群聊')
     }
     await reply(`人设「${name}」已删除`)
     return
@@ -224,22 +286,27 @@ async function manage(args) {
     if (DEFAULT_PERSONAS[name]) throw new Error('内置人设不能删')
     await db('exec', `DELETE FROM persona WHERE name = ?`, [name])
     for (const sc of ['group', 'private']) {
-      const cur = await host.sharedGet('persona.current_' + sc)
-      if (cur === name) await host.sharedSet('persona.current_' + sc, sc === 'private' ? '私聊' : '群聊')
+      const cur = await host.sharedGet('ai-persona.current_' + sc)
+      if (cur === name) await host.sharedSet('ai-persona.current_' + sc, sc === 'private' ? '私聊' : '群聊')
     }
     return { deleted: name }
   }
   if (action === 'set') {
     const name = String(args?.name || '').trim()
     const scope = args?.scope === 'private' ? 'private' : 'group'
+    const chatID = args?.chat_id
     if (!name) throw new Error('需要 name')
     if (!(await getPersona(name))) throw new Error(`人设 ${name} 不存在`)
-    await host.sharedSet('persona.current_' + scope, name)
-    return { scope, current: name }
+    if (chatID !== undefined && chatID !== null) {
+      await setPerChat(`${scope}:${chatID}`, name)
+      return { scope, chat_id: chatID, current: name, overridden: true }
+    }
+    await host.sharedSet('ai-persona.current_' + scope, name)
+    return { scope, current: name, overridden: false }
   }
   if (action === 'style') {
     const content = String(args?.content || '').trim()
-    await host.sharedSet('persona.style_override', content)
+    await host.sharedSet('ai-persona.style_override', content)
     return { style: content }
   }
   throw new Error(`未知 action: ${action}`)
@@ -268,7 +335,7 @@ serve({
   async call_tool({ name, args }) {
     if (name === 'persona.render') {
       try {
-        return { ok: true, data: await render(args?.chat_type) }
+        return { ok: true, data: await render(args?.chat_type, args?.chat_id) }
       } catch (e) {
         return { ok: false, error: e.message }
       }

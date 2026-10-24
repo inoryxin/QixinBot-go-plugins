@@ -2,15 +2,28 @@
      数据在 ai-persona 插件的 persona 表，这里用 persona.manage 能力读写。 -->
 <div style="margin-top:12px;padding:12px 14px;border:1px solid var(--border);border-radius:8px;background:var(--hover)">
   <p style="margin:0 0 6px"><strong>系统提示词和人设是同一件事</strong>，都在这个插件里管。</p>
-  <p class="muted" style="margin:0">
+  <p class="muted" style="margin:0 0 6px">
     AI 聊天插件每轮回话前会调 <code>persona.render</code> 取整合好的提示词——
-    基础提示词（下面的设置）+ 当前人设 + 自称 + 风格。
+    <strong>上面「设置」里的基础提示词 + 当前人设 + 自称 + 风格</strong>，
+    再加上 AI 聊天学到的群语气和黑话。
+  </p>
+  <p class="muted" style="margin:0">
+    AI 聊天插件页里也有「系统提示词 / 自称 / 风格」那几项——
+    <strong>那是本插件没装或停用时的兜底</strong>。两个都开着时，以这一页为准。
   </p>
 </div>
 
-<h2 style="margin-top:20px">人设</h2>
+<h2 style="margin-top:20px">人设列表</h2>
 <p class="muted" style="margin:0 0 10px">
-  群聊和私聊各自独立，改完立刻生效（下一条回复就用）。
+  <strong>上面「设置」是底座</strong>（基础提示词 / 自称 / 风格，所有场景共用）；
+  <strong>这里是可切换的角色</strong>，群聊和私聊各自选一个，改完立刻生效。
+</p>
+<p class="muted" style="margin:0 0 10px;padding:8px 10px;border-left:3px solid var(--border)">
+  最终提示词 = 上面的基础提示词 + 当前人设 + 自称 + 风格 + （AI 聊天学到的群语气/黑话）
+</p>
+<p class="muted" style="margin:0 0 10px;padding:8px 10px;border-left:3px solid var(--border)">
+  这里设的是<strong>默认</strong>（所有群 / 所有私聊）。想只给某个群单独设，
+  在那个群里发 <code>/人设 切换 猫娘</code>——只影响那个群。
 </p>
 
 <div style="display:flex;gap:14px;align-items:flex-start">
@@ -33,8 +46,8 @@
       <textarea id="pedit-content" rows="8"></textarea>
       <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
         <button class="primary" onclick="pSaveEdit()">保存</button>
-        <button onclick="pSwitch('group')">设为本群</button>
-        <button onclick="pSwitch('private')">设为私聊</button>
+        <button onclick="pSwitch('group')">设为群聊默认</button>
+        <button onclick="pSwitch('private')">设为私聊默认</button>
         <button class="danger" onclick="pDelete()">删除</button>
       </div>
     </div>
@@ -119,7 +132,7 @@
     if (!editing) return
     try {
       await call('set', { name: editing, scope })
-      msg((scope === 'group' ? '本群' : '私聊') + '已切换到「' + editing + '」')
+      msg((scope === 'group' ? '群聊默认' : '私聊默认') + '已设为「' + editing + '」')
       await load()
     } catch (e) { msg('切换失败：' + e.message) }
   }

@@ -13,14 +13,21 @@
   </p>
 </div>
 
+<div style="margin-top:12px;padding:10px 14px;border:1px solid var(--border);border-radius:8px;background:var(--hover)">
+  <p class="muted" style="margin:0">
+    <strong>人设</strong>：装了「人设」插件就在它的页面里改（支持多人设切换）。
+    没装的话用本页上面的「系统提示词 / 自称 / 说话风格」，或者用 <code>/人设</code> 命令。
+  </p>
+</div>
+
 <!-- 学到的东西：看得见、能删 -->
 <h2 style="margin-top:24px">学到的东西</h2>
 <p class="muted" style="margin:0 0 10px">
-  这些是从群聊里自动统计出来的说话习惯和高频词（群黑话）。觉得哪个词不适合就让 AI 学，点 ✕ 屏蔽掉。
+  这些是从群聊里自动统计的说话习惯，以及**群友反复发的短句**（群黑话）。觉得哪个词不该学，点 ✕ 屏蔽。
 </p>
 
 <div class="row" style="margin-bottom:10px">
-  <select id="lg-group" style="width:260px"></select>
+  <select id="lg-group" style="width:260px" onchange="lgLoad()"></select>
   <button onclick="lgLoad()">刷新</button>
   <button class="danger" onclick="lgForget()">删掉这个群的语料</button>
 </div>
@@ -112,8 +119,14 @@
     h += '<p style="margin:0 0 8px">统计自 <strong>' + g.n + '</strong> 条消息：平均 <strong>' + g.avg_len +
          '</strong> 字 · 表情 ' + Math.round(g.emoji_rate * 100) + '% · 语气词 ' + Math.round(g.particle_rate * 100) + '%</p>'
 
-    h += '<p style="margin:10px 0 4px"><strong>高频词（自动学的）</strong>　<span class="muted">点 ✕ 屏蔽</span></p>'
-    h += '<div>' + chips(g.slang || [], 'ban') + '</div>'
+    h += '<p style="margin:10px 0 4px"><strong>群黑话 / 常用梗</strong>　<span class="muted">点 ✕ 屏蔽</span></p>'
+    if ((g.slang || []).length) {
+      h += '<div>' + chips(g.slang, 'ban') + '</div>'
+    } else {
+      h += '<p class="muted" style="margin:0">还没学到稳定的词——需要同一句短话出现 ≥2 次，' +
+           '或者出现「草/笑死/离谱」这类常见梗。也可以直接在下面教它。' +
+           '（图片消息不算语料）</p>'
+    }
 
     if ((d.banned || []).length) {
       h += '<p style="margin:10px 0 4px"><strong>已屏蔽</strong>　<span class="muted">点 ↺ 恢复</span></p>'
@@ -153,6 +166,102 @@
       if ((d.groups || []).length) lgLoad()
       else $('lg-body').textContent = '还没有聊天记录。'
     } catch (e) { $('lg-body').textContent = '读取失败：' + e.message }
+  }
+
+  init()
+})()
+</script>
+
+<!-- 记忆：看得见、能删 -->
+<h2 style="margin-top:24px">记忆</h2>
+<p class="muted" style="margin:0 0 10px">
+  机器人记住的聊天记录。删掉后它就不再"记得"这些内容；不影响群里的消息本身。
+</p>
+
+<div class="row" style="margin-bottom:10px">
+  <select id="mm-chat" style="width:260px" onchange="mmLoad()"></select>
+  <button onclick="mmLoad()">刷新</button>
+  <button class="danger" onclick="mmClear()">清空这个会话</button>
+</div>
+<div id="mm-body" class="muted">加载中…</div>
+
+<script>
+(function(){
+  function $(id){ return document.getElementById(id) }
+  function esc(t){ return String(t).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])) }
+
+  async function call(args){
+    const body = new FormData()
+    body.set('name', 'ai.memory')
+    body.set('args', JSON.stringify(args))
+    const r = await fetch('/api/capabilities/call', { method: 'POST', body })
+    const j = await r.json()
+    if (!j.ok) throw new Error(j.error || '调用失败')
+    const inner = j.result || {}
+    if (inner.ok === false) throw new Error(inner.error || '插件返回失败')
+    return inner.data || {}
+  }
+
+  function cur(){
+    const [t, id] = ($('mm-chat').value || '').split(':')
+    return { chat_type: t, chat_id: Number(id) }
+  }
+
+  window.mmLoad = async function(){
+    const c = cur()
+    if (!c.chat_id) { $('mm-body').textContent = '还没有记忆'; return }
+    try {
+      const d = await call(Object.assign({ action: 'recent', limit: 30 }, c))
+      const rows = d.messages || []
+      if (!rows.length) { $('mm-body').innerHTML = '<p class="muted">（空）</p>'; return }
+      let h = '<details class="hg" open><summary><span class="arrow">▶</span><strong>最近 ' + rows.length + ' 条</strong></summary>' +
+              '<div class="body" style="max-height:320px;overflow:auto"><table><tbody>'
+      for (const m of rows) {
+        const who = m.role === 'user' ? '你' : '我'
+        h += '<tr><td style="width:44px">' + who + '</td><td>' + esc(String(m.content).slice(0, 80)) +
+             '</td><td style="width:56px"><a href="#" onclick="event.preventDefault();mmDel(' + m.id + ')">删除</a></td></tr>'
+      }
+      h += '</tbody></table></div></details>'
+      h += '<div class="row" style="margin-top:8px">' +
+           '<input type="text" id="mm-kw" placeholder="含关键词的删掉" style="width:220px">' +
+           '<button onclick="mmClearKw()">删含这个词的</button></div>'
+      $('mm-body').innerHTML = h
+    } catch (e) { $('mm-body').textContent = '读取失败：' + e.message }
+  }
+
+  window.mmDel = async function(id){
+    await call(Object.assign({ action: 'delete', id }, cur()))
+    mmLoad()
+  }
+
+  window.mmClear = async function(){
+    const c = cur()
+    if (!c.chat_id) return
+    if (!confirm('清空 ' + c.chat_type + ' ' + c.chat_id + ' 的全部记忆？')) return
+    await call(Object.assign({ action: 'clear' }, c))
+    mmLoad()
+  }
+
+  window.mmClearKw = async function(){
+    const kw = ($('mm-kw').value || '').trim()
+    if (!kw) return
+    await call(Object.assign({ action: 'clear_kw', keyword: kw }, cur()))
+    mmLoad()
+  }
+
+  async function init(){
+    try {
+      const d = await call({ action: 'groups' })
+      const sel = $('mm-chat'); sel.innerHTML = ''
+      for (const g of d.groups || []) {
+        const opt = document.createElement('option')
+        opt.value = g.chat_type + ':' + g.chat_id
+        opt.textContent = g.chat_type + ' ' + g.chat_id + '（' + g.n + ' 条）'
+        sel.appendChild(opt)
+      }
+      if ((d.groups || []).length) mmLoad()
+      else $('mm-body').textContent = '还没有记忆。'
+    } catch (e) { $('mm-body').textContent = '读取失败：' + e.message }
   }
 
   init()
