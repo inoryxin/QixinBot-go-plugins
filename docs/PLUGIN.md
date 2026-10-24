@@ -2790,6 +2790,9 @@ await host.reply(chatOf(session), '收到', session.message_id) // 引用回复
 dist/my-plugin/web/panel.html    ← 直接内联到插件详情页（/plugin/<id>/）
 ```
 
+**它在页面里的位置**：紧跟在「设置」下面（标题「扩展」）——
+最近的交互放前面，指令和工具表在它下面（工具默认折叠）。
+
 **能干什么**：
 
 - 用同源 `fetch` 调**任何**已声明能力：`POST /api/capabilities/call`
