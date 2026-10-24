@@ -371,6 +371,27 @@ async function recallPersonal(session, text, base, maxN) {
   return out
 }
 
+// 用模型描述一张图（私聊记忆用）。失败返回空串，不阻塞记忆。
+async function describeImage(url) {
+  try {
+    const dataURL = await toDataURL(url)
+    const r = await host.capability('llm.chat', {
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'text', text: '用一句话客观描述这张图（是谁/在做什么/什么东西）。不要评价，不要寒暄。' },
+          { type: 'image_url', image_url: { url: dataURL } },
+        ],
+      }],
+    })
+    if (!r?.ok) return ''
+    return String(r.data?.text || '').trim().slice(0, 120)
+  } catch (e) {
+    host.log('debug', '识图失败: ' + e.message)
+    return ''
+  }
+}
+
 // ---------------------------------------------------------------- 知识库
 
 async function searchKnowledge(text) {
@@ -923,6 +944,10 @@ async function buildMessages(session, userText, extraPrompt, images) {
   const names = await nicknamesOf(history.map((m) => m.user_id))
 
   for (const m of history) {
+    // 群里的纯图片占位不进上下文：占 token 又提供不了信息
+    // （私聊的图片会存描述，不会走到这里）
+    if (session.chat_type !== 'private' && m.role === 'user' && m.content === '[图片]') continue
+
     if (m.role === 'assistant') {
       messages.push({ role: 'assistant', content: m.content })
     } else {
@@ -1354,8 +1379,22 @@ serve({
       if (session.has_prefix) return {}
       const text = (session.text || '').trim()
       const imgs = imageURLsOf(session)
-      const content = text || (imgs.length ? '[图片]' : '')
+
+      // 私聊里的图片：先让模型看一眼，把**描述**存进记忆。
+      // 这样过一会儿问"我刚发了什么图"还能答上来，而不是只留个 [图片]。
+      let picDesc = ''
+      if (session.chat_type === 'private' && imgs.length) {
+        picDesc = await describeImage(imgs[0])
+      }
+
+      let content = text
+      if (picDesc) {
+        content = text ? `${text}（图片：${picDesc}）` : `[图片] ${picDesc}`
+      } else if (!content && imgs.length) {
+        content = '[图片]'
+      }
       if (!content) return {}
+
       await remember(session, 'user', content)
       return {}
     } catch (e) {
