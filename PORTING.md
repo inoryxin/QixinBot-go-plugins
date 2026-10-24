@@ -12,7 +12,7 @@
 | `src/tool-registry` | 20 次 | `[[tools]]` + `host.callTool`（框架统一注册） |
 | `src/services` | 9 次 | `[[requires]]` / `provides` 能力系统 |
 | `src/config-store` | 7 次 | `host.storage.*` / `db.sqlite` |
-| `src/deepseek` | 3 次 | `llm.chat` 能力（插件 `llm` 提供） |
+| `src/deepseek` | 3 次 | `llm.chat` 能力（插件 `ai-llm` 提供） |
 | `src/status-page` | 2 次 | WebUI 的页面注册 |
 | `src/template` 等 | 各 1 次 | 插件自带 / Node 内置模块 |
 
@@ -36,7 +36,7 @@
 | customemote | ⬜ 待移植 | 图片存名字，发名字发表情（storage + 图片消息） |
 | emojimix | ⬜ 待移植 | Emoji Kitchen 合成（一个 Google 接口） |
 | qq-profile | ⬜ 待移植 | 改昵称/签名/头像（`host.call_onebot`） |
-| affinity | ⬜ 待移植 | 好感度（`db.sqlite`，给 ai-chat 用） |
+| ai-affinity | ✅ 已移植 | 好感度（`db.sqlite`，给 ai-chat 用） |
 | voice | ⬜ 待移植 | 文字转语音（Windows SAPI，跨平台要换 TTS） |
 | music | ⬜ 待移植 | 点歌（网易云/QQ 音乐接口） |
 | rollpig | ⬜ 待移植 | 抽小猪（pighub.top 接口） |
