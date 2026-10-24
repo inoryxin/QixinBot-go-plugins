@@ -60,7 +60,9 @@ cd my-plugin
 | **home-assistant** | 智能家居控制 | — |
 | **keyword-reply** | 关键词回复 | — |
 | **llm** | LLM 服务（多后端） | — |
+| **ncm-saying** | 网易云热评（可每日定时） | — |
 | **selftest** | 自检（框架功能验证） | — |
+| **status** | 服务器状态（CPU/内存/磁盘） | — |
 | **trigger** | 关键词触发（正则 + 权重） | — |
 | **ts3-tracker** | TS3 在线追踪 | — |
 | **weather** | 天气查询 | — |
