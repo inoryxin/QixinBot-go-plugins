@@ -39,7 +39,7 @@
 | **ai-voice** ⬜ | `tts.say` | 文字转语音，返回音频文件 | edge-tts / Windows SAPI |
 | **ai-sticker** ⬜ | `sticker.pick` | 按情绪取一张表情包 | 素材库（用户自备） |
 | **ai-proactive** ⬜ | —（定时任务） | 群里沉默 N 分钟后主动说话 | `ai.chat` 能力 |
-| **persona 管理** ⬜ | —（ai-chat 内） | `/人设 列表/切换/新建` | ai-chat 现状 |
+| **persona 管理** ✅ | —（ai-chat 内） | `/人设 看/切换/新建/删除` + 控制台人设页 | ai-chat 现状 |
 | **knowledge** ⬜ | `kb.search` | 知识库增删查（关键词，不做向量） | — |
 | **style 语气学习** ⬜ | —（ai-chat 内） | 从群友消息学口癖/长度/表情习惯 | — |
 
@@ -149,7 +149,7 @@ every = "10m"
 
 ```
 1. ai-life                 ✅ 已完成（状态源）
-2. 人设命令 + WebUI 页       ← 下一步：不用新素材，立刻能玩
+2. 人设命令 + WebUI 页       ✅ 已完成
 3. 语气学习                       同上，纯统计
 4. knowledge CRUD                 同上
 5. ai-sticker                     需要素材（可以先空库，用户自己放）
