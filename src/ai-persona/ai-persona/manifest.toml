@@ -79,6 +79,13 @@ key = "current_private"
 description = "私聊当前人设名"
 default = "私聊"
 
+# 按会话的覆盖：JSON 字符串 {"group:523507256":"猫娘"}
+# 面板设的是默认，群里 /人设 切换 才写这里
+[[shared]]
+key = "per_chat"
+description = "按会话覆盖的人设（JSON）"
+default = "{}"
+
 [[shared]]
 key = "style_override"
 description = "临时说话风格（能力 set_style 用）"

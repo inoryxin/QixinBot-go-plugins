@@ -82,12 +82,37 @@ async function savePersona(name, content) {
     [name, content, now()])
 }
 
-async function currentName(chatType) {
+async function perChatMap() {
+  try {
+    const raw = await host.sharedGet('ai-persona.per_chat')
+    if (!raw) return {}
+    const m = typeof raw === 'string' ? JSON.parse(raw) : raw
+    return m && typeof m === 'object' ? m : {}
+  } catch {
+    return {}
+  }
+}
+
+async function setPerChat(key, name) {
+  const m = await perChatMap()
+  if (name) m[key] = name
+  else delete m[key]
+  await host.sharedSet('ai-persona.per_chat', JSON.stringify(m))
+}
+
+// 优先级：按会话覆盖 > 聊天类型默认
+async function currentName(chatType, chatID) {
   const scope = chatType === 'private' ? 'private' : 'group'
+  if (chatID) {
+    const m = await perChatMap()
+    const hit = m[`${scope}:${chatID}`]
+    if (hit) return { scope, name: hit, overridden: true }
+  }
   const saved = await host.sharedGet('ai-persona.current_' + scope)
   return {
     scope,
     name: saved || (scope === 'private' ? '私聊' : '群聊'),
+    overridden: false,
   }
 }
 
@@ -95,7 +120,7 @@ async function currentName(chatType) {
 
 async function render(chatType, chatID) {
   await ensureReady()
-  const { scope, name } = await currentName(chatType)
+  const { scope, name } = await currentName(chatType, chatID)
   const p = await getPersona(name)
 
   const parts = [settings.system_prompt || DEFAULT_PERSONAS.群聊]
@@ -158,7 +183,7 @@ async function personaCommand(session, text) {
   const scopeName = scope === 'private' ? '私聊' : '本群'
 
   if (!sub || sub === '看' || sub === '当前' || sub === '列表') {
-    const cur = await render(session.chat_type)
+    const cur = await render(session.chat_type, session.chat_id)
     const list = await listPersonas()
     const lines = [`${scopeName}当前人设：「${cur.name}」`]
     const p = await getPersona(cur.name)
@@ -178,7 +203,7 @@ async function personaCommand(session, text) {
       const names = (await listPersonas()).map((x) => x.name).join('、')
       return reply(`没有人设「${name}」\n现有：${names}`)
     }
-    await host.sharedSet('ai-persona.current_' + scope, name)
+    await setPerChat(`${scope}:${session.chat_id}`, name)
     await reply(`${scopeName}已切换到「${name}」`)
     return
   }
@@ -269,10 +294,15 @@ async function manage(args) {
   if (action === 'set') {
     const name = String(args?.name || '').trim()
     const scope = args?.scope === 'private' ? 'private' : 'group'
+    const chatID = args?.chat_id
     if (!name) throw new Error('需要 name')
     if (!(await getPersona(name))) throw new Error(`人设 ${name} 不存在`)
+    if (chatID !== undefined && chatID !== null) {
+      await setPerChat(`${scope}:${chatID}`, name)
+      return { scope, chat_id: chatID, current: name, overridden: true }
+    }
     await host.sharedSet('ai-persona.current_' + scope, name)
-    return { scope, current: name }
+    return { scope, current: name, overridden: false }
   }
   if (action === 'style') {
     const content = String(args?.content || '').trim()

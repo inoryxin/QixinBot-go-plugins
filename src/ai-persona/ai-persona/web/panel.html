@@ -21,6 +21,10 @@
 <p class="muted" style="margin:0 0 10px;padding:8px 10px;border-left:3px solid var(--border)">
   最终提示词 = 上面的基础提示词 + 当前人设 + 自称 + 风格 + （AI 聊天学到的群语气/黑话）
 </p>
+<p class="muted" style="margin:0 0 10px;padding:8px 10px;border-left:3px solid var(--border)">
+  这里设的是<strong>默认</strong>（所有群 / 所有私聊）。想只给某个群单独设，
+  在那个群里发 <code>/人设 切换 猫娘</code>——只影响那个群。
+</p>
 
 <div style="display:flex;gap:14px;align-items:flex-start">
   <div style="flex:0 0 200px">
@@ -42,8 +46,8 @@
       <textarea id="pedit-content" rows="8"></textarea>
       <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
         <button class="primary" onclick="pSaveEdit()">保存</button>
-        <button onclick="pSwitch('group')">设为本群</button>
-        <button onclick="pSwitch('private')">设为私聊</button>
+        <button onclick="pSwitch('group')">设为群聊默认</button>
+        <button onclick="pSwitch('private')">设为私聊默认</button>
         <button class="danger" onclick="pDelete()">删除</button>
       </div>
     </div>
@@ -128,7 +132,7 @@
     if (!editing) return
     try {
       await call('set', { name: editing, scope })
-      msg((scope === 'group' ? '本群' : '私聊') + '已切换到「' + editing + '」')
+      msg((scope === 'group' ? '群聊默认' : '私聊默认') + '已设为「' + editing + '」')
       await load()
     } catch (e) { msg('切换失败：' + e.message) }
   }
