@@ -2789,6 +2789,40 @@ host.log('info', '查询成功', { city, ms: 120 })
 
 **禁止 `console.log`**——stdout 是协议通道。适配器会重定向，但别依赖这个。
 
+**级别会被尊重**：`debug` / `info` / `warn` / `error` 分别落到对应级别，
+`info` 及以上写进 `data/bot.log`，`debug` 只在控制台的日志页可见。
+
+**`fields` 为空就不输出**——别为了"占位"传个空对象。
+
+**别用日志刷屏**：
+
+```js
+// ❌ 每轮心跳都打一条 info：30 秒一条，一天 2880 条，
+//    真正的消息日志全被挤没了
+async run_task({ task }) {
+  host.log('info', `定时任务执行: ${task}`)
+}
+
+// ✅ 成功不吭声，异常才说话（框架已经会记「定时任务失败」）
+async run_task({ task }) {
+  try {
+    await doWork()
+  } catch (e) {
+    host.log('error', `定时任务 ${task} 失败: ${e.message}`)
+  }
+}
+```
+
+**排查时最该看的两条日志**（框架打的，INFO 级）：
+
+```
+收到消息        scope="group 123" user=10001 text="/天气 北京"
+消息已交给插件   plugin=weather scope="group 123" user=10001 ms=42
+```
+
+第一条说明消息进来了，第二条说明谁接手、花了多久。
+**只有第一条没有第二条** = 没有插件认领（命令写错了、或被权限/冷却拦了）。
+
 ### 7.5 超时
 
 | 调用 | 超时 |
