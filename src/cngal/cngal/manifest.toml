@@ -52,6 +52,7 @@ key = "groupIds"
 label = "推送群号"
 type = "string"
 default = ""
+hint = "多个群号用 | 或逗号或空格分隔都行，例如 123456 | 789012"
 
 [[settings]]
 key = "weekday"

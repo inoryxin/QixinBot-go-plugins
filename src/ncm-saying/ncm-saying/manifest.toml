@@ -47,7 +47,7 @@ key = "auto_groups"
 label = "自动发送的群号"
 type = "string"
 default = ""
-hint = "逗号分隔；留空则不发"
+hint = "多个群号用 | 或逗号或空格分隔都行；留空则不发"
 
 [cooldown]
 per_user = "3s"
