@@ -1,0 +1,103 @@
+id = "what2eat"
+name = "今天吃什么"
+version = "1.0.0"
+apiVersion = "1.x"
+exec = ["node", "app/index.js"]
+description = "随机推荐吃的喝的，中午/晚上提醒吃饭，支持自定义菜谱"
+
+permissions = ["onebot.write"]
+
+provides = ["w2e.custom.list@1", "w2e.custom.add@1", "w2e.custom.remove@1"]
+
+# 「吃什么」不是斜杠命令，但不能强制前缀
+concurrency = "session"   # 不同群并行
+[access]
+require_prefix = false
+require_mention = false
+
+[[commands]]
+id = "w2e.eat"
+usage = "吃什么"
+aliases = ["吃啥", "吃点啥", "中午吃什么", "晚饭吃什么", "夜宵吃什么"]
+description = "随机推荐一顿饭"
+
+[[commands]]
+id = "w2e.drink"
+usage = "喝什么"
+aliases = ["喝啥", "喝点什么"]
+description = "随机推荐一杯饮料"
+
+[[commands]]
+id = "w2e.add"
+usage = "加菜"
+description = "把一道菜加进随机池（仅主人）"
+
+[[commands]]
+id = "w2e.del"
+usage = "删菜"
+description = "从随机池里删掉一道菜（仅主人）"
+
+[[commands]]
+id = "w2e.list"
+usage = "我的菜"
+description = "看看加过哪些自定义的菜"
+
+[[tools]]
+name = "what_to_eat"
+description = "随机推荐今天吃什么或喝什么。用户纠结吃什么、问「中午吃啥」时调用。"
+
+[tools.parameters]
+type = "object"
+
+[tools.parameters.properties.meal]
+type = "string"
+
+[[settings]]
+key = "remindEnabled"
+label = "吃饭提醒"
+type = "boolean"
+default = true
+
+[[settings]]
+key = "lunchTime"
+label = "午饭提醒时间"
+type = "string"
+default = "11:30"
+
+[[settings]]
+key = "dinnerTime"
+label = "晚饭提醒时间"
+type = "string"
+default = "17:30"
+
+[[settings]]
+key = "ownerQQ"
+label = "提醒发给谁"
+type = "string"
+default = ""
+
+[[settings]]
+key = "remindGroups"
+label = "提醒群"
+type = "string"
+default = ""
+
+[[settings]]
+key = "allowCustomUsers"
+label = "允许改菜谱的 QQ（空=仅主人）"
+type = "string"
+default = ""
+
+# 每 30 秒检查一次是不是到了饭点
+[[schedule]]
+id = "remind"
+every = "30s"
+description = "午饭/晚饭到点提醒"
+
+[runtime]
+kind = "node"
+version = ">=18"
+
+# 命令冷却：同一用户/群在 N 秒内只处理一次（宿主统一执行）
+[cooldown]
+per_user = "2s"

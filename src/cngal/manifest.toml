@@ -1,0 +1,121 @@
+id = "cngal"
+name = "国 G 周报"
+version = "1.1.0"
+apiVersion = "1.x"
+exec = ["node", "app/index.js"]
+description = "每周把 CnGal 的国 G 动态、即将发售、折扣画成一张长图发到群里"
+
+provides = ["cngal.preview@1"]
+
+permissions = ["onebot.write"]
+
+# 画图靠 canvas 服务插件；这里不再带原生模块，所以也不用锁平台
+concurrency = "session"   # 不同群并行
+[[requires]]
+kind = "plugin"
+id = "canvas"
+
+# 「国g」是短口令，不强制前缀
+[access]
+require_prefix = false
+require_mention = false
+
+[[commands]]
+id = "cngal.weekly"
+usage = "cngal"
+aliases = ["galweekly", "gal周报"]
+description = "立即生成一张国 G 周报图（也可以直接说「国g」）"
+
+[[commands]]
+id = "cngal.push"
+usage = "cngal push"
+description = "立刻向配置的群推送一次（管理员，也可以说「国g 推送」）"
+
+[[tools]]
+name = "get_cngal_weekly"
+description = "查看最近一周的国产 Galgame 动态、即将发售和折扣。用户问「这周国G有什么消息」时调用。"
+
+[tools.parameters]
+type = "object"
+
+[[settings]]
+key = "enabled"
+label = "启用每周推送"
+type = "boolean"
+default = true
+
+[[settings]]
+key = "groupIds"
+label = "推送群号"
+type = "string"
+default = ""
+
+[[settings]]
+key = "weekday"
+label = "每周几推送（0=周日）"
+type = "number"
+default = 1
+min = 0
+max = 6
+
+[[settings]]
+key = "hour"
+label = "小时"
+type = "number"
+default = 9
+min = 0
+max = 23
+
+[[settings]]
+key = "minute"
+label = "分钟"
+type = "number"
+default = 0
+min = 0
+max = 59
+
+[[settings]]
+key = "days"
+label = "动态回看天数"
+type = "number"
+default = 7
+min = 1
+max = 30
+
+[[settings]]
+key = "maxNews"
+label = "动态条数（0=全部）"
+type = "number"
+default = 8
+min = 0
+max = 30
+
+[[settings]]
+key = "maxUpcoming"
+label = "即将发售条数（0=全部）"
+type = "number"
+default = 9
+min = 0
+max = 30
+
+[[settings]]
+key = "maxDiscount"
+label = "折扣条数（0=全部）"
+type = "number"
+default = 9
+min = 0
+max = 30
+
+# 每分钟检查一次是不是到了推送时间
+[[schedule]]
+id = "tick"
+every = "60s"
+description = "每周定时推送国 G 周报"
+
+[runtime]
+kind = "node"
+version = ">=18"
+
+# 命令冷却：同一用户/群在 N 秒内只处理一次（宿主统一执行）
+[cooldown]
+per_user = "10s"

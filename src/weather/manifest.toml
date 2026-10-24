@@ -1,0 +1,45 @@
+id = "weather"
+name = "天气"
+version = "0.1.0"
+apiVersion = "1.x"
+exec = ["node", "app/index.js"]
+web = "web/index.html"
+description = "查询城市天气（示例插件，数据是假的）"
+
+permissions = ["onebot.write"]
+provides = ["weather_query@1"]
+
+concurrency = "session"   # 不同群并行
+[[capability]]
+name = "weather_query"
+
+[capability.parameters]
+type = "object"
+required = ["city"]
+
+[capability.parameters.properties.city]
+type = "string"
+
+
+[[commands]]
+id = "weather.query"
+usage = "weather <城市>"
+description = "查询指定城市的天气"
+aliases = ["天气"]
+
+[[tools]]
+name = "weather_query"
+description = "查询某个城市的当前天气。当用户问天气时调用。"
+parameters = { type = "object", properties = { city = { type = "string", description = "城市名，例如 北京" } }, required = ["city"] }
+
+[[settings]]
+key = "unit"
+label = "温度单位"
+type = "select"
+options = ["celsius", "fahrenheit"]
+default = "celsius"
+
+# 命令冷却：同一用户/群在 N 秒内只处理一次（宿主统一执行）
+[cooldown]
+per_user = "2s"
+per_group = "1s"

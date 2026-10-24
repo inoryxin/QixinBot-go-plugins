@@ -1,0 +1,65 @@
+id = "canvas"
+name = "画布服务"
+version = "1.0.0"
+apiVersion = "1.x"
+exec = ["node", "app/index.js"]
+description = "提供图片绘制能力，其他插件不用各带一份 canvas 原生模块"
+
+# 服务插件：不接消息，只提供能力
+kind = "service"
+
+provides = ["canvas.render@1", "canvas.probe@1"]
+
+load_order = -20   # 基础服务，先起来
+[[capability]]
+name = "canvas.probe"
+
+[capability.parameters]
+type = "object"
+
+[capability.parameters.properties.urls]
+type = "array"
+
+[[capability]]
+name = "canvas.render"
+
+[capability.parameters]
+type = "object"
+
+[capability.parameters.properties.width]
+type = "number"
+
+[capability.parameters.properties.height]
+type = "number"
+
+[capability.parameters.properties.background]
+type = "string"
+
+[capability.parameters.properties.ops]
+type = "array"
+
+[capability.parameters.properties.format]
+type = "string"
+
+[capability.parameters.properties.quality]
+type = "number"
+
+# 原生模块，只带当前平台；换系统时换这个包就行
+[[settings]]
+key = "format"
+label = "默认输出格式"
+type = "string"
+default = "image/png"
+
+[[settings]]
+key = "quality"
+label = "JPEG 质量（1-100）"
+type = "number"
+default = 88
+min = 1
+max = 100
+
+[runtime]
+kind = "node"
+version = ">=18"
+platform = "windows"

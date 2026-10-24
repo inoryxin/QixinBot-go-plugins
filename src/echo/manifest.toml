@@ -1,0 +1,23 @@
+id = "echo"
+name = "回声"
+version = "0.1.0"
+apiVersion = "1.x"
+exec = ["node", "app/index.js"]
+description = "把收到的内容原样返回"
+
+permissions = ["onebot.write"]
+
+concurrency = "session"   # 不同群并行
+[[commands]]
+id = "echo.say"
+usage = "echo <文本>"
+description = "原样返回你输入的文本"
+
+[[commands]]
+id = "echo.ping"
+usage = "ping"
+description = "测试机器人是否在线"
+
+# 命令冷却：同一用户/群在 N 秒内只处理一次（宿主统一执行）
+[cooldown]
+per_user = "2s"

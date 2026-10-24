@@ -1,0 +1,190 @@
+<!-- 关键词回复的扩展面板：规则增删改 + 测试 -->
+<style>
+.kw-table{width:100%;border-collapse:collapse;margin-top:10px;font-size:13px}
+.kw-table th,.kw-table td{padding:8px;border-bottom:1px solid var(--border);text-align:left;vertical-align:top}
+.kw-table th{font-weight:600;color:var(--muted);font-size:12px}
+.kw-table input[type=text],.kw-table select,.kw-table textarea{width:100%;padding:5px 8px;box-sizing:border-box}
+.kw-table textarea{min-height:54px;resize:vertical;font-family:inherit;font-size:12px}
+.kw-hint{font-size:12px;color:var(--muted);margin-top:6px;line-height:1.6}
+.kw-actions{display:flex;gap:8px;margin-top:12px;align-items:center}
+.kw-test{margin-top:18px;padding:12px 14px;border:1px solid var(--border);border-radius:8px}
+</style>
+
+<div id="kw-panel">
+  <h3 style="margin:6px 0 4px">关键词规则</h3>
+  <div class="kw-hint">
+    回复框每行一条，格式 <strong>类型:内容</strong>。<br>
+    类型可以写 <strong>文本</strong>（或 text）、<strong>图片</strong>（image）、<strong>语音</strong>（record）、
+    <strong>表情</strong>（face）、<strong>@某人</strong>（at）。<br>
+    不写类型时当作文本。多条候选回复会随机选一条。
+  </div>
+
+  <table class="kw-table" id="kw-table">
+    <thead>
+      <tr>
+        <th style="width:96px">匹配</th>
+        <th style="width:150px">关键词</th>
+        <th>回复（每行一条）</th>
+        <th style="width:74px">范围</th>
+        <th style="width:44px">启用</th>
+        <th style="width:44px"></th>
+      </tr>
+    </thead>
+    <tbody id="kw-body"></tbody>
+  </table>
+
+  <div class="kw-actions">
+    <button id="kw-add" type="button">+ 添加规则</button>
+    <button class="primary" id="kw-save" type="button">保存规则</button>
+    <span id="kw-tip" class="muted" style="font-size:12px"></span>
+  </div>
+
+  <div class="kw-test">
+    <strong style="font-size:13px">测试</strong>
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <input type="text" id="kw-test-input" placeholder="输入一句话，看会命中哪些规则" style="flex:1;padding:7px 10px">
+      <button id="kw-test-btn" type="button">测试</button>
+    </div>
+    <div id="kw-test-out" class="muted" style="font-size:12px;margin-top:8px"></div>
+  </div>
+</div>
+
+<script>
+(function () {
+  const api = (name, args) =>
+    fetch('/api/capabilities/call', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ name, args: JSON.stringify(args || {}) }),
+    }).then((r) => r.json())
+
+  const tbody = document.getElementById('kw-body')
+  const tip = document.getElementById('kw-tip')
+  const MATCHES = ['exact', 'contains', 'prefix', 'suffix', 'regex', 'fuzzy']
+  const MATCH_NAMES = {
+    exact: '精准（完全一样）',
+    contains: '包含',
+    prefix: '开头是',
+    suffix: '结尾是',
+    regex: '正则',
+    fuzzy: '模糊（容错一个字）',
+  }
+  let rules = []
+
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))
+
+  // replies <-> 多行文本
+  function repliesToText(replies) {
+    return (replies || []).map((r) => {
+      if (typeof r === 'string') return 'text:' + r
+      const type = r.type || 'text'
+      const val = r.text ?? r.url ?? r.file ?? r.id ?? r.qq ?? ''
+      return type + ':' + val
+    }).join('\n')
+  }
+
+  function textToReplies(text) {
+    return String(text || '').split('\n').map((line) => line.trim()).filter(Boolean).map((line) => {
+      const i = line.indexOf(':')
+      if (i <= 0) return { type: 'text', text: line }
+      const raw = line.slice(0, i).trim().toLowerCase()
+      const val = line.slice(i + 1).trim()
+      const TYPE_ALIAS = {
+        text: 'text', 文本: 'text', 文字: 'text',
+        image: 'image', 图片: 'image', 图: 'image',
+        record: 'record', voice: 'record', 语音: 'record',
+        face: 'face', 表情: 'face',
+        at: 'at', '@': 'at', 艾特: 'at',
+      }
+      const type = TYPE_ALIAS[raw]
+      if (!type) return { type: 'text', text: line }
+      if (type === 'text') return { type: 'text', text: val }
+      if (type === 'face') return { type: 'face', id: val }
+      if (type === 'at') return { type: 'at', qq: val }
+      return { type, url: val }
+    })
+  }
+
+  function render() {
+    if (!rules.length) {
+      tbody.innerHTML = '<tr><td colspan="6" class="muted" style="padding:14px">还没有规则，点下面「添加规则」。</td></tr>'
+      return
+    }
+    tbody.innerHTML = rules.map((r, i) =>
+      '<tr>' +
+      '<td><select data-i="' + i + '" data-k="match">' +
+        MATCHES.map((m) => '<option value="' + m + '"' + (r.match === m ? ' selected' : '') + '>' + MATCH_NAMES[m] + '</option>').join('') +
+      '</select></td>' +
+      '<td><input type="text" data-i="' + i + '" data-k="pattern" value="' + esc(r.pattern || '') + '"></td>' +
+      '<td><textarea data-i="' + i + '" data-k="replies">' + esc(repliesToText(r.replies)) + '</textarea></td>' +
+      '<td><select data-i="' + i + '" data-k="scope">' +
+        ['', 'group', 'private'].map((s) => '<option value="' + s + '"' + ((r.scope || '') === s ? ' selected' : '') + '>' + (s || '全部') + '</option>').join('') +
+      '</select></td>' +
+      '<td><input type="checkbox" data-i="' + i + '" data-k="enabled"' + (r.enabled !== false ? ' checked' : '') + '></td>' +
+      '<td><button type="button" data-del="' + i + '" style="padding:4px 8px">删</button></td>' +
+      '</tr>'
+    ).join('')
+
+    tbody.querySelectorAll('input,select,textarea').forEach((el) => {
+      el.addEventListener('change', () => {
+        const i = Number(el.dataset.i)
+        const k = el.dataset.k
+        if (k === 'enabled') rules[i].enabled = el.checked
+        else if (k === 'replies') rules[i].replies = textToReplies(el.value)
+        else rules[i][k] = el.value
+      })
+    })
+    tbody.querySelectorAll('[data-del]').forEach((el) => {
+      el.addEventListener('click', () => {
+        rules.splice(Number(el.dataset.del), 1)
+        render()
+      })
+    })
+  }
+
+  async function load() {
+    const r = await api('kw.list', {})
+    rules = (r?.result?.data?.rules || []).map((x) => ({ ...x }))
+    render()
+  }
+
+  document.getElementById('kw-add').addEventListener('click', () => {
+    rules.push({ id: 'r' + Date.now(), match: 'contains', pattern: '', replies: [], enabled: true, scope: '' })
+    render()
+  })
+
+  document.getElementById('kw-save').addEventListener('click', async (ev) => {
+    const btn = ev.currentTarget
+    btn.disabled = true
+    tip.textContent = '保存中…'
+    try {
+      const clean = rules.filter((r) => String(r.pattern || '').trim())
+      const r = await api('kw.save', { rules: clean })
+      if (r?.result?.ok) {
+        tip.textContent = '已保存 ' + (r.result.data?.count ?? clean.length) + ' 条'
+        await load()
+      } else {
+        tip.textContent = '保存失败：' + (r?.result?.error || '')
+      }
+    } catch (e) {
+      tip.textContent = '保存失败：' + e.message
+    } finally {
+      btn.disabled = false
+      setTimeout(() => { tip.textContent = '' }, 4000)
+    }
+  })
+
+  document.getElementById('kw-test-btn').addEventListener('click', async () => {
+    const text = document.getElementById('kw-test-input').value.trim()
+    if (!text) return
+    const out = document.getElementById('kw-test-out')
+    const r = await api('kw.test', { text, chat_type: 'group' })
+    const hits = r?.result?.data?.hits || []
+    out.textContent = hits.length
+      ? '命中 ' + hits.length + ' 条：' + hits.map((h) => `${h.pattern}（${MATCH_NAMES[h.match] || h.match}）`).join('、')
+      : '没有规则命中'
+  })
+
+  load()
+})();
+</script>

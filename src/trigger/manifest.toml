@@ -1,0 +1,76 @@
+id = "trigger"
+name = "关键词触发"
+version = "1.0.0"
+apiVersion = "1.x"
+exec = ["node", "app/index.js"]
+description = "关键词 → HTTP 请求（GET/POST），支持模板回复和三层鉴权"
+
+permissions = ["onebot.write"]
+
+provides = ["trigger.list@1", "trigger.save@1", "trigger.test@1"]
+
+# 关键词不是命令，不能要求前缀
+[access]
+require_prefix = false
+require_mention = false
+
+[[tools]]
+name = "list_triggers"
+description = "列出当前配置的关键词触发规则（关键词和说明，不含请求 URL）。用户问「有哪些关键词触发」时调用。"
+
+[tools.parameters]
+type = "object"
+
+[[settings]]
+key = "enabled"
+label = "启用"
+type = "boolean"
+default = true
+
+[[settings]]
+key = "allowUsers"
+label = "允许触发的 QQ（空=所有人）"
+type = "string"
+default = ""
+
+[[settings]]
+key = "allowGroups"
+label = "允许触发的群（空=不限）"
+type = "string"
+default = ""
+
+[[settings]]
+key = "denyUsers"
+label = "禁止触发的 QQ"
+type = "string"
+default = ""
+
+[[settings]]
+key = "timeoutMs"
+label = "请求超时（毫秒）"
+type = "number"
+default = 8000
+min = 1000
+max = 60000
+
+[[settings]]
+key = "defaultReply"
+label = "默认成功回复"
+type = "string"
+default = "已执行（HTTP {httpStatus}）"
+
+[[settings]]
+key = "defaultFailureReply"
+label = "默认失败回复"
+type = "string"
+default = "请求失败（HTTP {httpStatus}）"
+
+[[settings]]
+key = "defaultErrorReply"
+label = "默认出错回复"
+type = "string"
+default = "请求出错：{error}"
+
+[runtime]
+kind = "node"
+version = ">=18"

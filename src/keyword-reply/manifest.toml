@@ -1,0 +1,54 @@
+id = "keyword-reply"
+name = "关键词回复"
+version = "1.0.0"
+apiVersion = "1.x"
+exec = ["node", "app/index.js"]
+description = "按关键词自动回复：精准/包含/开头/正则/模糊，可回文本、图片、语音"
+
+permissions = ["onebot.write"]
+
+# 给 WebUI 面板用的能力，必须在任何 [table] 之前
+provides = ["kw.list@1", "kw.save@1", "kw.test@1"]
+
+# 关键词不是命令，不能要求前缀
+[access]
+require_prefix = false
+require_mention = false
+
+[[settings]]
+key = "enabled"
+label = "启用"
+type = "boolean"
+default = true
+
+[[settings]]
+key = "cooldownSeconds"
+label = "同一会话冷却（秒）"
+type = "number"
+default = 10
+min = 0
+max = 3600
+
+[[settings]]
+key = "maxPerMinute"
+label = "每分钟最多回复（0=不限）"
+type = "number"
+default = 20
+min = 0
+max = 600
+
+[[settings]]
+key = "replyToKeyword"
+label = "回复时引用原消息"
+type = "boolean"
+default = true
+
+[[settings]]
+key = "skipCommands"
+label = "带前缀的消息不参与匹配"
+type = "boolean"
+default = true
+
+[runtime]
+kind = "node"
+version = ">=18"

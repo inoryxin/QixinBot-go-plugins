@@ -1,0 +1,174 @@
+<!-- 关键词触发：规则管理 + 鉴权配置说明 -->
+<style>
+.tg-table{width:100%;border-collapse:collapse;margin-top:10px;font-size:13px}
+.tg-table th,.tg-table td{padding:8px;border-bottom:1px solid var(--border);text-align:left;vertical-align:top}
+.tg-table th{font-weight:600;color:var(--muted);font-size:12px}
+.tg-table input[type=text],.tg-table select,.tg-table textarea{width:100%;padding:5px 8px;box-sizing:border-box}
+.tg-table textarea{min-height:40px;resize:vertical;font-family:inherit;font-size:12px}
+.tg-hint{font-size:12px;color:var(--muted);margin-top:6px;line-height:1.7}
+.tg-actions{display:flex;gap:8px;margin-top:12px;align-items:center}
+.tg-advanced{display:none;background:var(--bg2,#1a1a1a);padding:8px;border-radius:6px;margin-top:4px}
+.tg-advanced.show{display:block}
+.tg-warn{padding:10px 12px;border-left:3px solid #d97706;background:#2a1f0a;border-radius:4px;font-size:12px;line-height:1.7;margin-bottom:12px}
+</style>
+
+<div id="tg-panel">
+  <div class="tg-warn">
+    <strong>注意：</strong>关键词触发会发起真实 HTTP 请求，能控制外部服务。
+    「允许触发的 QQ」留空表示<strong>所有人</strong>都能触发；建议填上你自己的 QQ。
+    单条规则填了「允许 QQ」就以它为准。
+  </div>
+
+  <h3 style="margin:6px 0 4px">触发规则</h3>
+  <div class="tg-hint">
+    匹配方式：<strong>精准</strong>（完全一样）/ <strong>包含</strong> / <strong>开头是</strong> / <strong>结尾是</strong> / <strong>正则</strong>。
+    回复里可以用 <code>{httpStatus}</code> / <code>{body}</code> / <code>{error}</code> 占位。<br>
+    请求鉴权写在「请求头」里，例如 <code>{"Authorization":"Bearer xxx"}</code>。
+  </div>
+
+  <table class="tg-table" id="tg-table">
+    <thead>
+      <tr>
+        <th style="width:110px">关键词</th>
+        <th style="width:96px">匹配</th>
+        <th>请求地址</th>
+        <th style="width:70px">方法</th>
+        <th style="width:130px">允许 QQ</th>
+        <th style="width:44px">启用</th>
+        <th style="width:44px"></th>
+      </tr>
+    </thead>
+    <tbody id="tg-body"></tbody>
+  </table>
+
+  <div class="tg-actions">
+    <button id="tg-add" type="button">+ 添加规则</button>
+    <button class="primary" id="tg-save" type="button">保存规则</button>
+    <span id="tg-tip" class="muted" style="font-size:12px"></span>
+  </div>
+</div>
+
+<script>
+(function () {
+  const api = (name, args) =>
+    fetch('/api/capabilities/call', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ name, args: JSON.stringify(args || {}) }),
+    }).then((r) => r.json())
+
+  const tbody = document.getElementById('tg-body')
+  const tip = document.getElementById('tg-tip')
+  const MATCHES = { exact: '精准', contains: '包含', prefix: '开头是', suffix: '结尾是', regex: '正则' }
+  let rules = []
+
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))
+
+  function render() {
+    if (!rules.length) {
+      tbody.innerHTML = '<tr><td colspan="7" class="muted" style="padding:14px">还没有规则，点下面「添加规则」。</td></tr>'
+      return
+    }
+    tbody.innerHTML = rules.map((r, i) =>
+      '<tr>' +
+      '<td><input type="text" data-i="' + i + '" data-k="keyword" value="' + esc(r.keyword || '') + '"></td>' +
+      '<td><select data-i="' + i + '" data-k="match">' +
+        Object.keys(MATCHES).map((m) => '<option value="' + m + '"' + ((r.match || 'exact') === m ? ' selected' : '') + '>' + MATCHES[m] + '</option>').join('') +
+      '</select></td>' +
+      '<td><input type="text" data-i="' + i + '" data-k="url" value="' + esc(r.url || '') + '" placeholder="https://..."></td>' +
+      '<td><select data-i="' + i + '" data-k="method">' +
+        ['GET','POST','PUT','DELETE'].map((m) => '<option' + ((r.method || 'GET') === m ? ' selected' : '') + '>' + m + '</option>').join('') +
+      '</select></td>' +
+      '<td><input type="text" data-i="' + i + '" data-k="allowUsers" value="' + esc(r.allowUsers || '') + '" placeholder="空=继承" title="多个用 | 分隔"></td>' +
+      '<td><input type="checkbox" data-i="' + i + '" data-k="enabled"' + (r.enabled !== false ? ' checked' : '') + '></td>' +
+      '<td><button type="button" data-del="' + i + '" style="padding:4px 8px">删</button></td>' +
+      '</tr>' +
+      '<tr><td colspan="7" style="padding:0 8px 8px">' +
+        '<button type="button" data-adv="' + i + '" style="padding:3px 9px;font-size:12px">高级</button>' +
+        '<div class="tg-advanced" id="tg-adv-' + i + '">' +
+          '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">' +
+            '<label style="font-size:12px">备注<input type="text" data-i="' + i + '" data-k="description" value="' + esc(r.description || '') + '"></label>' +
+            '<label style="font-size:12px">成功回复<input type="text" data-i="' + i + '" data-k="reply" value="' + esc(r.reply || '') + '" placeholder="已执行（HTTP {httpStatus}）"></label>' +
+            '<label style="font-size:12px">失败回复<input type="text" data-i="' + i + '" data-k="failureReply" value="' + esc(r.failureReply || '') + '"></label>' +
+            '<label style="font-size:12px">出错回复<input type="text" data-i="' + i + '" data-k="errorReply" value="' + esc(r.errorReply || '') + '"></label>' +
+          '</div>' +
+          '<label style="font-size:12px;display:block;margin-top:8px">请求头（JSON，鉴权写这里）<textarea data-i="' + i + '" data-k="headers">' + esc(JSON.stringify(r.headers || {})) + '</textarea></label>' +
+          '<label style="font-size:12px;display:block;margin-top:8px">请求体<input type="text" data-i="' + i + '" data-k="body" value="' + esc(typeof r.body === 'string' ? r.body : (r.body ? JSON.stringify(r.body) : '')) + '"></label>' +
+          '<div style="margin-top:8px"><button type="button" data-test="' + i + '" style="padding:3px 9px;font-size:12px">测试这条</button>' +
+          '<span id="tg-test-' + i + '" class="muted" style="font-size:12px;margin-left:8px"></span></div>' +
+        '</div>' +
+      '</td></tr>'
+    ).join('')
+
+    tbody.querySelectorAll('input,select,textarea').forEach((el) => {
+      el.addEventListener('change', () => {
+        const i = Number(el.dataset.i)
+        const k = el.dataset.k
+        if (k === 'enabled') rules[i].enabled = el.checked
+        else if (k === 'headers') {
+          try { rules[i].headers = el.value.trim() ? JSON.parse(el.value) : {} }
+          catch { rules[i].headers = {} }
+        } else if (k === 'body') {
+          const v = el.value.trim()
+          if (!v) rules[i].body = undefined
+          else { try { rules[i].body = JSON.parse(v) } catch { rules[i].body = v } }
+        } else rules[i][k] = el.value
+      })
+    })
+    tbody.querySelectorAll('[data-del]').forEach((el) => {
+      el.addEventListener('click', () => { rules.splice(Number(el.dataset.del), 1); render() })
+    })
+    tbody.querySelectorAll('[data-adv]').forEach((el) => {
+      el.addEventListener('click', () => {
+        document.getElementById('tg-adv-' + el.dataset.adv).classList.toggle('show')
+      })
+    })
+    tbody.querySelectorAll('[data-test]').forEach((el) => {
+      el.addEventListener('click', async () => {
+        const i = Number(el.dataset.test)
+        const out = document.getElementById('tg-test-' + i)
+        out.textContent = '请求中…'
+        const r = await api('trigger.test', { rule: rules[i] })
+        const d = r?.result?.data
+        out.textContent = r?.result?.ok && d
+          ? `HTTP ${d.status}${d.ok ? '' : '（失败）'}：${String(d.body || '').slice(0, 80)}`
+          : ('出错：' + (r?.result?.error || ''))
+      })
+    })
+  }
+
+  async function load() {
+    const r = await api('trigger.list', {})
+    rules = (r?.result?.data?.rules || []).map((x) => ({ ...x }))
+    render()
+  }
+
+  document.getElementById('tg-add').addEventListener('click', () => {
+    rules.push({ keyword: '', url: '', method: 'GET', match: 'exact', enabled: true, allowUsers: '', headers: {} })
+    render()
+  })
+
+  document.getElementById('tg-save').addEventListener('click', async (ev) => {
+    const btn = ev.currentTarget
+    btn.disabled = true
+    tip.textContent = '保存中…'
+    try {
+      const clean = rules.filter((r) => String(r.keyword || '').trim() && String(r.url || '').trim())
+      const r = await api('trigger.save', { rules: clean })
+      if (r?.result?.ok) {
+        tip.textContent = '已保存 ' + (r.result.data?.count ?? clean.length) + ' 条'
+        await load()
+      } else {
+        tip.textContent = '保存失败：' + (r?.result?.error || '')
+      }
+    } catch (e) {
+      tip.textContent = '保存失败：' + e.message
+    } finally {
+      btn.disabled = false
+      setTimeout(() => { tip.textContent = '' }, 5000)
+    }
+  })
+
+  load()
+})();
+</script>

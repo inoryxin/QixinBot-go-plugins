@@ -1,0 +1,232 @@
+<!-- B站订阅的扩展面板：扫码登录 + 账号状态 + 订阅列表管理 -->
+<style>
+.bili-table{width:100%;border-collapse:collapse;margin-top:10px;font-size:13px}
+.bili-table th,.bili-table td{padding:8px 10px;border-bottom:1px solid var(--border);text-align:left}
+.bili-table th{font-weight:600;color:var(--muted);font-size:12px}
+.bili-table input[type=text],.bili-table input[type=number]{width:100%;padding:5px 8px}
+.bili-table input[type=checkbox]{width:16px;height:16px}
+.bili-row-actions{display:flex;gap:8px;margin-top:12px}
+.bili-hint{font-size:12px;color:var(--muted);margin-top:6px}
+</style>
+
+<div id="bili-panel" style="margin-top:8px">
+  <div id="bili-account" class="muted">正在检查登录状态…</div>
+  <div style="margin-top:12px;display:flex;gap:10px;align-items:flex-start">
+    <button class="primary" id="bili-qr-btn" type="button">扫码登录</button>
+    <button id="bili-logout-btn" type="button" style="display:none">清除 Cookie</button>
+  </div>
+  <div id="bili-qr-box" style="display:none;margin-top:14px">
+    <img id="bili-qr-img" alt="二维码" style="width:200px;height:200px;border-radius:8px;background:#fff;padding:8px">
+    <div id="bili-qr-status" class="muted" style="margin-top:6px"></div>
+  </div>
+
+  <h3 style="margin:22px 0 4px">订阅列表</h3>
+  <div class="bili-hint">「推送群」填 QQ 群号，多个用 | 分隔（例如 123|456）；勾选框控制推什么。</div>
+
+  <table class="bili-table" id="bili-sub-table">
+    <thead>
+      <tr>
+        <th style="width:150px">UID</th>
+        <th style="width:110px">名字</th>
+        <th>推送到群</th>
+        <th style="width:56px">直播</th>
+        <th style="width:56px">视频</th>
+        <th style="width:56px">图文</th>
+        <th style="width:66px">@全体</th>
+        <th style="width:60px"></th>
+      </tr>
+    </thead>
+    <tbody id="bili-sub-body"></tbody>
+  </table>
+
+  <div class="bili-row-actions">
+    <button id="bili-add-sub" type="button">+ 添加订阅</button>
+    <button class="primary" id="bili-save-subs" type="button">保存订阅</button>
+    <span id="bili-save-tip" class="muted" style="align-self:center"></span>
+  </div>
+
+  <h3 style="margin:22px 0 4px">关键词屏蔽</h3>
+  <div class="bili-hint">动态标题或正文命中这些词就不推送（防广告），多个用 | 分隔。</div>
+  <div style="display:flex;gap:10px;margin-top:8px">
+    <input type="text" id="bili-block" placeholder="广告|代刷|推广" style="flex:1;padding:7px 10px">
+    <button id="bili-save-block" type="button">保存</button>
+  </div>
+  <span id="bili-block-tip" class="muted" style="font-size:12px"></span>
+</div>
+
+<script>
+(function () {
+  const api = (name, args) =>
+    fetch('/api/capabilities/call', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ name, args: JSON.stringify(args || {}) }),
+    }).then((r) => r.json())
+
+  const accountEl = document.getElementById('bili-account')
+  const qrBtn = document.getElementById('bili-qr-btn')
+  const logoutBtn = document.getElementById('bili-logout-btn')
+  const qrBox = document.getElementById('bili-qr-box')
+  const qrImg = document.getElementById('bili-qr-img')
+  const qrStatus = document.getElementById('bili-qr-status')
+  const tbody = document.getElementById('bili-sub-body')
+  const tip = document.getElementById('bili-save-tip')
+
+  let pollTimer = null
+  let rows = []
+
+  function esc(s) {
+    return String(s).replace(/[&<>"]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))
+  }
+
+  function render() {
+    if (!rows.length) {
+      tbody.innerHTML = '<tr><td colspan="8" class="muted" style="padding:14px">还没有订阅，点下面「添加订阅」。</td></tr>'
+      return
+    }
+    tbody.innerHTML = rows.map((r, i) =>
+      '<tr>' +
+      '<td><input type="text" data-i="' + i + '" data-k="uid" value="' + esc(r.uid) + '" placeholder="UP 主 UID"></td>' +
+      '<td><input type="text" data-i="' + i + '" data-k="name" value="' + esc(r.name || '') + '" placeholder="备注名"></td>' +
+      '<td><input type="text" data-i="' + i + '" data-k="groups" value="' + esc((r.groups || []).join('|')) + '" placeholder="群号，用 | 分隔"></td>' +
+      ['live', 'video', 'post', 'atAll'].map((k) =>
+        '<td><input type="checkbox" data-i="' + i + '" data-k="' + k + '"' + (r[k] ? ' checked' : '') + '></td>'
+      ).join('') +
+      '<td><button type="button" data-del="' + i + '" style="padding:4px 8px">删</button></td>' +
+      '</tr>'
+    ).join('')
+
+    tbody.querySelectorAll('input').forEach((el) => {
+      el.addEventListener('change', () => {
+        const i = Number(el.dataset.i)
+        const k = el.dataset.k
+        if (k === 'groups') {
+          rows[i].groups = el.value.split(/[,，\s]+/).map((x) => x.trim()).filter(Boolean)
+        } else if (k === 'live' || k === 'video' || k === 'post' || k === 'atAll') {
+          rows[i][k] = el.checked
+        } else {
+          rows[i][k] = el.value.trim()
+        }
+      })
+    })
+    tbody.querySelectorAll('[data-del]').forEach((el) => {
+      el.addEventListener('click', () => {
+        rows.splice(Number(el.dataset.del), 1)
+        render()
+      })
+    })
+  }
+
+  async function loadSubs() {
+    const r = await api('bili.sub.list', {})
+    const d = r?.result?.data
+    rows = (d?.subscriptions || []).map((s) => ({ ...s }))
+    render()
+  }
+
+  document.getElementById('bili-add-sub').addEventListener('click', () => {
+    rows.push({ uid: '', name: '', groups: [], live: true, video: true, post: true, atAll: false })
+    render()
+  })
+
+  document.getElementById('bili-save-subs').addEventListener('click', async (ev) => {
+    const btn = ev.currentTarget
+    btn.disabled = true
+    tip.textContent = '保存中…'
+    try {
+      const clean = rows.filter((r) => /^\d+$/.test(String(r.uid || '').trim()))
+      const r = await api('bili.sub.save', { subscriptions: clean })
+      if (r?.result?.ok) {
+        tip.textContent = '已保存 ' + (r.result.data?.count ?? clean.length) + ' 条'
+        await loadSubs()
+      } else {
+        tip.textContent = '保存失败：' + (r?.result?.error || '未知错误')
+      }
+    } catch (e) {
+      tip.textContent = '保存失败：' + e.message
+    } finally {
+      btn.disabled = false
+      setTimeout(() => { tip.textContent = '' }, 4000)
+    }
+  })
+
+  async function refreshAccount() {
+    const r = await api('bili.nav', {})
+    const d = r?.result?.data
+    if (d?.isLogin) {
+      accountEl.innerHTML = `已登录：<strong>${esc(d.uname)}</strong>（UID ${d.mid}）${d.vip ? ' · 大会员' : ''}`
+      logoutBtn.style.display = ''
+    } else {
+      accountEl.textContent = '未登录：动态接口会被风控拦截，建议扫码登录'
+      logoutBtn.style.display = 'none'
+    }
+  }
+
+  function stopPolling() {
+    if (pollTimer) clearInterval(pollTimer)
+    pollTimer = null
+  }
+
+  async function pollQr(key) {
+    const r = await api('bili.qr.poll', { key })
+    const d = r?.result?.data
+    if (!d) { qrStatus.textContent = r?.result?.error || '轮询失败'; return }
+    if (d.state === 'waiting') qrStatus.textContent = '等待扫码…'
+    else if (d.state === 'scanned') qrStatus.textContent = '已扫码，请在手机上确认'
+    else if (d.state === 'expired') { qrStatus.textContent = '二维码已过期，重新获取'; stopPolling() }
+    else if (d.state === 'error') { qrStatus.textContent = d.message || '登录失败'; stopPolling() }
+    else if (d.state === 'confirmed') {
+      qrStatus.textContent = '登录成功'
+      stopPolling()
+      qrBox.style.display = 'none'
+      await refreshAccount()
+    }
+  }
+
+  qrBtn.addEventListener('click', async () => {
+    qrBtn.disabled = true
+    try {
+      const r = await api('bili.qr.start', {})
+      const d = r?.result?.data
+      if (!d?.qrImage) { alert(r?.result?.error || '生成二维码失败'); return }
+      qrImg.src = d.qrImage
+      qrBox.style.display = ''
+      qrStatus.textContent = '等待扫码…'
+      stopPolling()
+      pollTimer = setInterval(() => pollQr(d.key), 2000)
+    } finally {
+      qrBtn.disabled = false
+    }
+  })
+
+  logoutBtn.addEventListener('click', async () => {
+    if (!confirm('清除 Cookie 后动态接口会受限，确定？')) return
+    await fetch('/api/plugin/bilibili/settings', {
+      method: 'POST',
+      body: new URLSearchParams({ cookie: '' }),
+    })
+    await refreshAccount()
+  })
+
+  // ---- 关键词屏蔽 ----
+  const blockInput = document.getElementById('bili-block')
+  const blockTip = document.getElementById('bili-block-tip')
+
+  async function loadBlock() {
+    const r = await api('bili.block.get', {})
+    const d = r?.result?.data
+    blockInput.value = (d?.keywords || []).join('|')
+  }
+
+  document.getElementById('bili-save-block').addEventListener('click', async () => {
+    const kws = blockInput.value.split(/[|｜,，\s]+/).map((x) => x.trim()).filter(Boolean)
+    const r = await api('bili.block.save', { keywords: kws })
+    blockTip.textContent = r?.result?.ok ? `已保存 ${kws.length} 个词` : ('保存失败：' + (r?.result?.error || ''))
+    setTimeout(() => { blockTip.textContent = '' }, 4000)
+  })
+
+  refreshAccount()
+  loadSubs()
+  loadBlock()
+})();
+</script>

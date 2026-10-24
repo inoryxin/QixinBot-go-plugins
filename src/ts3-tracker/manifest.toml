@@ -1,0 +1,124 @@
+id = "ts3-tracker"
+name = "TS3 在线"
+version = "1.0.0"
+apiVersion = "1.x"
+exec = ["node", "app/index.js"]
+description = "查询 TeamSpeak 3 在线频道，支持进/退通知"
+
+permissions = ["onebot.write"]
+
+# 命令不带前缀也能用（ts / 上号）
+[access]
+require_prefix = false
+require_mention = false
+
+[[commands]]
+id = "ts3.status"
+usage = "ts3"
+aliases = ["ts", "上号"]
+description = "查看 TS3 在线频道和人员（说 ts / 上号 也行）"
+
+[[commands]]
+id = "ts3.info"
+usage = "ts3info"
+aliases = ["tsinfo", "ts信息"]
+description = "查看 TS3 服务器信息（说 tsinfo / ts信息 也行）"
+
+[[tools]]
+name = "ts3_status"
+description = "查询 TeamSpeak 3 当前在线频道和用户。用户问「TS 上有谁」「谁在 TS」时调用。"
+
+[tools.parameters]
+type = "object"
+
+# 轮询探测：固定 15 秒问一次，实际按设置里的 pollSeconds 节流
+[[schedule]]
+id = "poll"
+every = "15s"
+description = "检查 TS3 在线变化并推送进出通知"
+
+[[settings]]
+key = "host"
+label = "TS3 地址"
+type = "string"
+default = "10.0.0.123"
+
+[[settings]]
+key = "voicePort"
+label = "语音端口"
+type = "number"
+default = 9987
+min = 1
+max = 65535
+
+[[settings]]
+key = "queryPort"
+label = "ServerQuery 端口"
+type = "number"
+default = 10011
+min = 1
+max = 65535
+
+[[settings]]
+key = "username"
+label = "Query 用户名"
+type = "string"
+default = ""
+
+[[settings]]
+key = "password"
+label = "Query 密码"
+type = "password"
+default = ""
+
+[[settings]]
+key = "publicHost"
+label = "对外显示地址"
+type = "string"
+default = ""
+
+[[settings]]
+key = "publicPort"
+label = "对外显示端口"
+type = "number"
+default = 0
+min = 0
+max = 65535
+
+[[settings]]
+key = "timeoutMs"
+label = "查询超时（毫秒）"
+type = "number"
+default = 10000
+min = 1000
+max = 60000
+
+[[settings]]
+key = "notifyEnabled"
+label = "进/退通知"
+type = "boolean"
+default = false
+
+[[settings]]
+key = "notifyGroups"
+label = "通知群（用 | 分隔）"
+type = "string"
+default = ""
+
+[[settings]]
+key = "notifyUsers"
+label = "通知私聊 QQ（用 | 分隔）"
+type = "string"
+default = ""
+
+[[settings]]
+key = "pollSeconds"
+label = "轮询间隔（秒）"
+type = "number"
+default = 30
+min = 15
+max = 3600
+
+[runtime]
+kind = "node"
+version = ">=18"
