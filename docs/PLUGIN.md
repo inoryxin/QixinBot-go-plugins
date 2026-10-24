@@ -922,6 +922,17 @@ type = "string"
 
 `ok` 必填；`retryable` 表示"重试可能成功"（超时、网络），业务插件可以据此决定要不要重试。
 
+**参数 schema 要写全**：框架在把调用转给插件之前会**按 schema 校验参数**，
+schema 里没声明的字段会被直接拒掉：
+
+```
+错误: 能力 ai.persona 参数不合法：未知参数 "scope"（允许: [action content name]）
+```
+
+所以能力支持哪些参数，`[capability.parameters.properties]` 就要列全
+（包括只在某个 action 下才用的 `scope` 这类字段）。校验本身是好事——
+拼错字段名当场就报，而不是进了插件才发现没生效。
+
 **3. 每种操作的语义** —— 以 `db.sqlite` 为例：
 
 | op | data 里有什么 | 说明 |

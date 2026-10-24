@@ -87,6 +87,13 @@ type = "string"
 [capability.parameters.properties.content]
 type = "string"
 
+# 切换人设时要指定作用域：群聊还是私聊。
+# 漏了这个字段，框架的参数校验会直接拒掉调用
+# （"未知参数 scope（允许: action content name）"）。
+[capability.parameters.properties.scope]
+type = "string"
+enum = ["group", "private"]
+
 # ---- 设置 ----
 # ---- 人设管理 ----
 [[commands]]
