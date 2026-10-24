@@ -58,7 +58,7 @@ function cleanForSpeech(text) {
     .trim()
 }
 
-async function synth(text) {
+async function synth(text, override = {}) {
   const clean = cleanForSpeech(text)
   if (!clean) return { ok: false, error: '没有可读的文字' }
 
@@ -71,8 +71,8 @@ async function synth(text) {
   const r = await run([
     '-m', 'edge_tts',
     '--text', say,
-    '--voice', String(settings.voice || 'zh-CN-XiaoxiaoNeural'),
-    '--rate=' + String(settings.rate || '+0%'),
+    '--voice', String(override.voice || settings.voice || 'zh-CN-XiaoxiaoNeural'),
+    '--rate=' + String(override.rate || settings.rate || '+0%'),
     '--write-media', file,
   ])
 
@@ -124,6 +124,28 @@ serve({
   },
 
   async call_tool({ name, args }) {
+    if (name === 'voice.preview') {
+      const r = await synth(args?.text, { voice: args?.voice, rate: args?.rate })
+      if (!r.ok) return r
+      const b64 = fs.readFileSync(r.file).toString('base64')
+      try { fs.unlinkSync(r.file) } catch {}
+      return { ok: true, data: { audio: b64, mime: 'audio/mpeg', bytes: r.size } }
+    }
+
+    if (name === 'voice.cache') {
+      const action = String(args?.action || 'stats')
+      let files = []
+      try { files = fs.existsSync(OUT_DIR) ? fs.readdirSync(OUT_DIR) : [] } catch {}
+      const bytes = files.reduce((a, f) => {
+        try { return a + fs.statSync(path.join(OUT_DIR, f)).size } catch { return a }
+      }, 0)
+      if (action === 'clear') {
+        for (const f of files) { try { fs.unlinkSync(path.join(OUT_DIR, f)) } catch {} }
+        return { ok: true, data: { cleared: files.length } }
+      }
+      return { ok: true, data: { files: files.length, bytes } }
+    }
+
     if (name !== 'voice.say') return { ok: false, error: '未知能力: ' + name }
     const chat = {
       account: String(args?.account || ''),
