@@ -16,9 +16,9 @@
 
 ### 能力系统
 
-- **服务插件**（`kind = "service"`）只提供能力，不接消息：`sqlite`、`llm`、`canvas`
+- **服务插件**（`kind = "service"`）只提供能力，不接消息：`sqlite`、`ai-llm`、`ai-life`
 - 插件之间通过 `host.capability()` 调用，多提供者按优先级选；**提供者被卸载或不可用时自动切换到下一个**
-- 内置能力：数据库、LLM 调用、图片渲染（`canvas.render`，自带开源中文字体）
+- 内置能力：数据库、LLM 调用；图片渲染由运行时 `@napi-rs/canvas` + SDK `canvas-kit` 提供
 
 ### 控制台
 

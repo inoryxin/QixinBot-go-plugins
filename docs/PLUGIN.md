@@ -1236,7 +1236,6 @@ AI 相关功能分散在多个插件，配置必须**跟着提供能力的插件
 
 | 依赖 | 提供的能力 | 用来做什么 | 别自己打包 |
 |---|---|---|---|
-| `canvas` 画布服务 | `canvas.render` / `canvas.probe` | 图片合成、卡片、长图、字体 | `@napi-rs/canvas` |
 | `ai-llm` LLM 服务 | `llm.chat` / `llm.info` | 对话、识图、工具调用 | OpenAI/DeepSeek SDK、API Key |
 | `ai-life` 她的生活 | `life.now` / `life.set` / `life.plan` | 当前状态、日程 | 自己维护作息表 |
 | `db.sqlite` 内置 | `db.sqlite` | SQLite 持久化 | `better-sqlite3` 等原生模块 |
@@ -1246,14 +1245,14 @@ AI 相关功能分散在多个插件，配置必须**跟着提供能力的插件
 ```toml
 [[requires]]
 kind = "plugin"
-name = "画布服务"
-value = "canvas"
+name = "LLM 服务"
+value = "ai-llm"
 ```
 
 调用时永远检查返回值，依赖没装/禁用就降级：
 
 ```js
-const r = await host.capability('canvas.render', { width: 480, height: 320, ops: [] })
+const r = await host.capability('llm.chat', { messages: [{ role: 'user', content: '你好' }] })
 if (!r?.ok) {
   await host.reply(chatOf(session), '画图服务不可用，先发文字吧')
   return { handled: true }
@@ -1669,22 +1668,18 @@ if (r?.ok) reply(r.data.text)
 
 ---
 
-## 6.8 画图：用 canvas 服务，别自己带原生模块
+## 6.8 画图：用 `_sdk/canvas-kit.mjs`，别自己带原生模块
 
-`@napi-rs/canvas` 的 `.node` 是按平台编译的（每个 27MB），每个要画图的插件各带一份，
-包体积翻倍还容易跨平台出问题。框架把它做成了**服务插件**：
+`@napi-rs/canvas` 由**运行时共享依赖**提供，插件包不打包原生模块。
+SDK 里带了一个薄封装 `_sdk/canvas-kit.mjs`：
 
-```toml
-# manifest.toml
-[[requires]]
-kind = "plugin"
-name = "画布服务"
-value = "canvas"
+```js
+import { renderOps, probe } from '../_sdk/canvas-kit.mjs'
 ```
 
 ```js
 // 画一张 480×480 的卡片
-const r = await host.capability('canvas.render', {
+const buffer = await renderOps({
   width: 480,
   height: 480,
   background: '#f6f5f2',
@@ -1694,7 +1689,7 @@ const r = await host.capability('canvas.render', {
     { type: 'text', text: '在时尚上花钱', x: 240, y: 200, size: 28, font: 'sakura', align: 'center' },
   ],
 })
-// r.data.image → base64 PNG
+// buffer → 发送时 `base64://${buffer.toString('base64')}`
 ```
 
 ### 支持的 op
@@ -1704,113 +1699,27 @@ const r = await host.capability('canvas.render', {
 | `image` | `src x y w h round?` | `src` 支持 http / `base64://` / `data:` / 本地绝对路径 |
 | `rect` | `x y w h fill? stroke? radius? lineWidth?` | |
 | `text` | `x y text size font color bold? align? baseline?` | 基础文字 |
-| `text` + `wrap` | 上面的 + `wrap maxLines? lineHeight?` | **自动折行**，不用自己 measureText |
-| `text` + `vertical` | 上面的 + `gap` | **竖排**，逐字往下 |
-| `ellipsis` | `x y text wrap size font color` | 超宽自动截断加 `…` |
+| `text` + `wrap` | 上面的 + `wrap maxLines? lineHeight?` | 自动折行 |
+| `text` + `vertical` | 上面的 + `gap` | 竖排 |
+| `ellipsis` | `x y text wrap size font color` | 超宽截断加 `…` |
 
 ### 量图片尺寸
 
-瀑布流布局要知道宽高比：
-
 ```js
-const r = await host.capability('canvas.probe', { urls: ['https://...', 'https://...'] })
-// r.data.sizes → [{url, width, height}]
+const sizes = await probe(['https://...', 'https://...'])
+// [{url, width, height}]
 ```
 
-### 字体：框架带了一个，不用自己配
+### 字体
 
-canvas 服务**内置霞鹜文楷**（OFL-1.1 开源协议，13MB），不指定 `font` 就用它：
+- 运行时共享目录 `data/deps/fonts/` 里的字体自动注册（默认霞鹜文楷）
+- 插件自己的 `assets/fonts/` 也会注册，别名 = 文件名去扩展名
+- 不指定 `font` 时用霞鹜文楷，中文不会变方块
 
-```js
-{ type: 'text', text: '中文', x: 100, y: 100, size: 24 }
-// → 自动用霞鹜文楷，不会变方块
-```
+### 运行时依赖
 
-要自己的字体就放 `<插件>/assets/fonts/`，canvas 会扫描所有插件注册成全局字体
-（别名 = 文件名去扩展名）：
-
-```
-<插件>/assets/fonts/MyFont.ttf   →   font: 'MyFont'
-```
-
-**扫描顺序**：`assets/fonts` → `assets/font` → `app/fonts`（旧）→ `fonts`（旧）。
-同名后面的覆盖前面的。
-
-**不想用霞鹜文楷**？可以在 canvas 服务里换掉 `assets/fonts/` 下的文件，
-或者插件自己指定 `font`。
-
-### 最小完整例子
-
-```js
-import { serve, host } from '../_sdk/qixin.mjs'
-
-function chatOf(session) {
-  return { account: session.account, chat_type: session.chat_type, chat_id: session.chat_id }
-}
-
-serve({
-  async handle_message({ session }) {
-    if (session.text !== '画个卡片') return { handled: false }
-    const r = await host.capability('canvas.render', {
-      width: 480,
-      height: 320,
-      background: '#141821',
-      format: 'image/jpeg',
-      quality: 88,
-      ops: [
-        { type: 'text', text: '你好', x: 32, y: 70, size: 42, bold: true, color: '#ffffff' },
-        { type: 'text', text: '这是一张用画布服务生成的卡片', x: 32, y: 130, size: 22, color: '#c7cfdd', wrap: 416, maxLines: 3 },
-      ],
-    })
-    if (!r?.ok) {
-      await host.reply(chatOf(session), '画图失败：' + (r?.error || '未知错误'))
-      return { handled: true }
-    }
-    await host.reply(chatOf(session), [
-      { type: 'image', data: { file: `base64://${r.data.image}` } },
-    ])
-    return { handled: true }
-  },
-})
-```
-
-### 返回值和错误
-
-```js
-{ ok: true, data: { image: '<base64>', format: 'image/png' } }
-{ ok: false, error: '画布渲染失败: ...' }
-```
-
-- `image` 是**不带 `data:` 前缀**的 base64，发送时拼 `base64://`
-- `format` 默认 `image/png`；要小图就传 `image/jpeg` + `quality`
-- 画布服务不可用/渲染失败时 `ok:false`，调用方要自己兜底（发文字或原图）
-
-### op 字段细节
-
-- 坐标原点在左上角，`x/y` 就是左上角；文字默认 `baseline: 'alphabetic'`
-- `text` 的 `align` 支持 `left/center/right`；`wrap` 是**像素宽度**，`maxLines: 0` 表示不限
-- `text` 不写 `font` 用内置霞鹜文楷；`bold: true` 加粗
-- `image` 的 `round` 是圆角半径；`w/h` 不写用原图尺寸
-- `image.src` 支持 `http(s)` / `base64://` / `data:` / 本地绝对路径；远程图由画布服务统一拉取
-- `rect` 的 `radius` 圆角，`fill` 填充，`stroke` 描边
-- `ellipsis` 超宽自动截断加 `…`，适合标题栏
-
-### 布局建议
-
-先用 `canvas.probe` 量图，再算高度：
-
-```js
-const probe = await host.capability('canvas.probe', { urls: [coverUrl] })
-const size = probe?.data?.sizes?.[0]
-const imageH = Math.min(560, Math.max(320, Math.round((size.height / size.width) * 760)))
-```
-
-然后 `canvas.render` 的 `height` 用 `imageH + 文字区高度`，`image` op 按 `imageH` 画。
-
-### 换平台
-
-只有 canvas 插件需要换包（`[runtime] platform = "windows"`），
-所有调用方一行不用改。
+`@napi-rs/canvas` 由运行时包提供；**不要**在插件 `deps/` 里放 `.node` 文件（qixinpack 会拦截）。
+共享依赖缺失时，去控制台「依赖」页安装，或让管理员补。
 
 ## 6.9 并发（速查）
 
@@ -1965,7 +1874,7 @@ env = { MY_API = "xxx" }
 
 ### 字体：框架有兜底
 
-**画图不用带字体也行**——canvas 服务内置了**霞鹜文楷**（OFL-1.1 开源协议）。
+**画图不用带字体也行**——运行时共享字体目录 `data/deps/fonts/` 自带**霞鹜文楷**（OFL-1.1 开源协议）。
 
 ```js
 // 不指定 font，就用框架的霞鹜文楷
@@ -1978,7 +1887,7 @@ env = { MY_API = "xxx" }
 <插件>/assets/fonts/MyFont.ttf
 ```
 
-canvas 服务启动时扫描**所有插件**的 `assets/fonts/`，别名 = 文件名。然后：
+`canvas-kit` 启动时扫描**所有插件**的 `assets/fonts/` 和共享字体目录，别名 = 文件名。然后：
 
 ```js
 { type: 'text', text: '中文', font: 'MyFont', ... }
@@ -2758,19 +2667,19 @@ async initialize() {
 **解法**：给 A 设一个更小的 `load_order`。
 
 ```toml
-# canvas/manifest.toml
-id = "canvas"
+# ai-llm/manifest.toml
+id = "ai-llm"
 kind = "service"
 load_order = 10      # 数字小的先加载
-provides = ["canvas.render@1"]
+provides = ["llm.chat@1"]
 ```
 
 ```toml
-# llm/manifest.toml
-id = "llm"
+# ai-life/manifest.toml
+id = "ai-life"
 kind = "service"
-load_order = 20      # 比 canvas 晚
-provides = ["llm.chat@1"]
+load_order = 20      # 比 ai-llm 晚
+provides = ["life.now@1"]
 ```
 
 **规则**：
