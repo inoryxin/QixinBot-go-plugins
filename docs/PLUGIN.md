@@ -1430,7 +1430,7 @@ platform = "windows-x64"
 runtime-node-windows-x64.anzu     Node 24.20.0     80MB
 runtime-node-linux-x64.anzu       Node 24.20.0    106MB
 runtime-python-windows-x64.anzu   Python 3.12.10   73MB
-runtime-python-linux-x64.anzu     Python 3.12.15  218MB
+runtime-python-linux-x64.anzu     Python 3.12.15  155MB
 ```
 
 下载入口暂未开放；开放后只提供这 4 个完整包，不下载官方裸解释器。
