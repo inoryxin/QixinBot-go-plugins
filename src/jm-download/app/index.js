@@ -298,26 +298,30 @@ async function sendText(chat, text) {
  * 先按本地路径发（框架会读成 base64）；路径不在框架 data/ 下时会被拒，
  * 这时自己读文件转 base64 重试 —— 用户把「下载目录」配到 D:\ 也能出卡。
  */
+/**
+ * 发「文字 + 图片」。
+ *
+ * ⚠️ 不能走 host.reply 的本地路径：框架会把文件读成 base64 再发，
+ *    SnowLuma 对 base64 图片会回 retcode=100（QQ 无回执），实测发不出去；
+ *    用 `file:///` 绝对路径（协议端自己读文件 + 上传）就正常。
+ */
 async function sendImageWithText(chat, text, imagePath) {
   if (!chat) return false
   const segments = []
   if (text) segments.push({ type: 'text', data: { text: String(text) } })
-  segments.push({ type: 'image', data: { file: imagePath } })
+  const abs = path.resolve(imagePath).replace(/\\/g, '/')
+  segments.push({ type: 'image', data: { file: /^[A-Za-z]:/.test(abs) ? `file:///${abs}` : `file://${abs}` } })
   try {
-    await host.reply(chat, segments)
+    if (chat.chat_type === 'group') {
+      await host.callOnebot('send_group_msg', { group_id: chat.chat_id, message: segments })
+    } else {
+      await host.callOnebot('send_private_msg', { user_id: chat.chat_id, message: segments })
+    }
     return true
   } catch (error) {
-    warn(`按路径发图失败，改用 base64：${error?.message ?? error}`)
+    warn(`发图失败（改用纯文字）：${error?.message ?? error}`)
   }
-  try {
-    const raw = await fsp.readFile(imagePath)
-    segments[segments.length - 1] = { type: 'image', data: { file: `base64://${raw.toString('base64')}` } }
-    await host.reply(chat, segments)
-    return true
-  } catch (error) {
-    warn(`发图失败：${error?.message ?? error}`)
-  }
-  // 图实在发不出去（协议端限制/编码问题）也不能把文字吞掉
+  // 图实在发不出去也不能把文字吞掉
   return sendText(chat, text)
 }
 
@@ -1276,7 +1280,9 @@ async function runJob(job) {
         if (r.ok) {
           deliveryConfirmed = true
           rememberGroupFile(dest, r.fileId, deliverName || path.basename(deliverPath))
-          if (r.note) uploadNote = `ℹ️ ${r.note}`
+          // 上传成功但列表暂时查不到 file_id 时，upload.js 会给 note —— 只记日志，
+          // 不再多发一条「协议端已返回成功…」打扰群里
+          if (r.note) debug(`上传备注：${r.note}`)
           if (zipTooBig) {
             uploadNote = `⚠️ 压缩包 ${humanSize(size)} 超过单文件上限 ${c.maxUploadMB} MB，已按整包上传（没有切分）。${uploadNote ? `\n${uploadNote}` : ''}`
           }
