@@ -1,0 +1,79 @@
+async function tick() {
+  if (busy || settings.enabled === false) return
+
+  const now = new Date()
+  const weekday = Number(settings.weekday ?? 1)
+  if (now.getDay() !== weekday) return
+
+  const hour = Number(settings.hour ?? 9)
+  const minute = Number(settings.minute ?? 0)
+  if (now.getHours() !== hour || now.getMinutes() < minute || now.getMinutes() > minute + 9) return
+
+  const state = (await host.storage.get('state')) || {}
+  const key = weekKey(now)
+  if (state.lastWeek === key) return
+
+  const targets = parseIds(settings.groupIds)
+  if (!targets.length) {
+    host.log('warn', 'cngal: 没有配置群号，跳过本周推送')
+    return
+  }
+
+  busy = true
+  try {
+    const payload = await buildImage(Number(settings.days) || 7)
+    const sent = await sendWeekly(targets, payload)
+    if (sent > 0) {
+      await host.storage.set('state', { ...state, lastWeek: key, lastSentAt: now.toISOString(), lastGroups: targets })
+      host.log('info', `cngal: 周报已推送 ${sent}/${targets.length} 个群`)
+    }
+  } catch (err) {
+    host.log('error', `cngal: 周报生成失败：${err.message}`)
+  } finally {
+    busy = false
+  }
+}
+
+// ---------------------------------------------------------------- 服务
+
+serve({
+  async initialize({ settings: initial }) {
+    settings = initial || {}
+    host.log('info', '国 G 周报启动')
+    return { api_version: '1.0' }
+  },
+
+  async set_settings({ values }) {
+    settings = { ...settings, ...values }
+    return { ok: true }
+  },
+
+  async handle_message({ session }) {
+    const text = (session.text || '').trim()
+    const m = /^(?:国\s*g|cngal|gal周报)(?:\s*(周报|推送|预览))?$/i.exec(text)
+    if (!m) return { handled: false }
+
+    const action = (m[1] || '周报').toLowerCase()
+
+    if (action === '推送') {
+      const targets = parseIds(settings.groupIds)
+      if (!targets.length) {
+        await host.reply(chatOf(session), '还没配置群号，先去插件设置里填。')
+        return { handled: true }
+      }
+      await host.reply(chatOf(session), `开始生成并推送到 ${targets.length} 个群…`)
+      try {
+        const payload = await buildImage(Number(settings.days) || 7)
+        const sent = await sendWeekly(targets, payload)
+        await host.storage.set('state', { ...((await host.storage.get('state')) || {}), lastWeek: weekKey(new Date()), lastSentAt: new Date().toISOString() })
+        await host.reply(chatOf(session), `推送完成：${sent}/${targets.length}`)
+      } catch (err) {
+        host.log('error', `cngal: 推送失败 ${err.message}`)
+        await host.reply(chatOf(session), `推送失败：${err.message}`)
+      }
+      return { handled: true }
+    }
+
+    await host.reply(chatOf(session), '正在生成国 G 周报…')
+    try {
+      const payload = await 

@@ -1,4 +1,5 @@
 import { serve, host } from '../_sdk/qixin.mjs'
+import { probe, renderOps } from '../_sdk/canvas-kit.mjs'
 
 const API = 'https://pighub.top/api/images?sort=2'
 const ORIGIN = 'https://pighub.top'
@@ -66,11 +67,50 @@ async function loadPigs() {
 function chatOf(session) {
   return { account: session.account || '', chat_type: session.chat_type || 'private', chat_id: session.chat_id }
 }
+async function renderCard(pig, label, analysis) {
+  const url = imageUrl(pig)
+  let w = 760, h = 560
+  try {
+    const sizes = await probe([url])
+    const size = sizes?.[0]
+    if (size?.width > 0 && size?.height > 0) {
+      w = size.width
+      h = size.height
+    }
+  } catch {}
+  const width = 760
+  const imageH = Math.min(560, Math.max(320, Math.round((h / w) * width)))
+  const drawW = Math.round(Math.min(width, imageH * (w / h)))
+  const drawH = Math.min(imageH, Math.round(drawW * (h / w)))
+  const buffer = await renderOps({
+    width,
+    height: imageH + 200,
+    background: '#141821',
+    format: 'image/jpeg',
+    quality: 88,
+    ops: [
+      { type: 'image', src: url, x: Math.round((width - drawW) / 2), y: Math.round((imageH - drawH) / 2), w: drawW, h: drawH },
+      { type: 'text', text: `${label}：${pig.title}`, x: 36, y: imageH + 48, size: 30, bold: true, color: '#f4c95d', wrap: 688, maxLines: 1 },
+      { type: 'text', text: analysis, x: 36, y: imageH + 96, size: 22, color: '#c7cfdd', wrap: 688, maxLines: 4, lineHeight: 32 },
+    ],
+  })
+  return buffer.toString('base64')
+}
+
 async function sendPig(session, pig, label, analysis) {
-  await host.reply(chatOf(session), [
-    { type: 'text', data: { text: `${label}：${pig.title}\n${analysis}` } },
-    { type: 'image', data: { file: imageUrl(pig) } },
-  ])
+  try {
+    const b64 = await renderCard(pig, label, analysis)
+    await host.reply(chatOf(session), [
+      { type: 'text', data: { text: `${label}：${pig.title}\n${analysis}` } },
+      { type: 'image', data: { file: `base64://${b64}` } },
+    ])
+  } catch (e) {
+    host.log('warn', `rollpig 卡片渲染失败，发原图: ${e.message}`)
+    await host.reply(chatOf(session), [
+      { type: 'text', data: { text: `${label}：${pig.title}\n${analysis}` } },
+      { type: 'image', data: { file: imageUrl(pig) } },
+    ])
+  }
 }
 function targetUser(session) {
   const at = (session.segments || []).find((s) => s.type === 'at')
@@ -132,6 +172,8 @@ serve({
     if (name !== 'roll_pig') return { ok: false, error: '未知工具' }
     const pigs = await loadPigs()
     const pig = pigs[Math.floor(Math.random() * pigs.length)]
-    return { ok: true, data: { text: `抽到小猪：${pig.title}\n${imageUrl(pig)}` } }
+    const analysis = ANALYSIS[Math.floor(Math.random() * ANALYSIS.length)]
+    const image = await renderCard(pig, '随机小猪', analysis)
+    return { ok: true, data: { image, text: `抽到小猪：${pig.title}` } }
   },
 })

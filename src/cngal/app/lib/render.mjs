@@ -9,6 +9,7 @@
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { host } from '../../_sdk/qixin.mjs'
+import { probe, renderOps } from '../../_sdk/canvas-kit.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -362,12 +363,8 @@ async function probeImages(urls) {
   // 服务端一次最多处理 60 个
   for (let i = 0; i < unique.length; i += 60) {
     const chunk = unique.slice(i, i + 60)
-    const r = await host.capability('canvas.probe', { urls: chunk })
-    if (!r?.ok) {
-      host.log('warn', `cngal: probe 失败 ${r?.error || '未知错误'}`)
-      continue
-    }
-    for (const item of r.data?.sizes ?? []) {
+    const list = await probe(chunk)
+    for (const item of list) {
       sizes.set(item.url, { width: Number(item.width) || 0, height: Number(item.height) || 0 })
     }
   }
@@ -388,7 +385,7 @@ export async function renderWeekly(data, options = {}) {
   const sizes = await probeImages(urls)
   const plan = buildPlan(data, options, sizes)
 
-  const r = await host.capability('canvas.render', {
+  const buffer = await renderOps({
     width: plan.width,
     height: plan.height,
     background: plan.background,
@@ -397,11 +394,9 @@ export async function renderWeekly(data, options = {}) {
     format: 'image/jpeg',
     quality: 88,
   })
-  if (!r?.ok) throw new Error(`canvas.render 失败：${r?.error || '未知错误'}`)
-  if (!r.data?.image) throw new Error('canvas.render 没返回图片')
 
   host.log('info', `cngal: 出图 ${plan.width}x${plan.height}，${plan.ops.length} 条指令`)
-  return { image: r.data.image, width: plan.width, height: plan.height, counts: plan.counts }
+  return { image: buffer.toString('base64'), width: plan.width, height: plan.height, counts: plan.counts }
 }
 
 export { WIDTH }

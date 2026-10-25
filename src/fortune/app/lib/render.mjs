@@ -2,7 +2,7 @@
 // 原来这里直接 require('@napi-rs/canvas')，现在走能力，跨平台时不用改这个插件。
 import fs from 'node:fs'
 import path from 'node:path'
-import { host } from '../../_sdk/qixin.mjs'
+import { renderOps } from '../../_sdk/canvas-kit.mjs'
 import { decrement, loadCopywriting, pickCopywriting } from './fortune.cjs'
 
 const CANVAS_SIZE = 480
@@ -69,12 +69,11 @@ function buildOps({ theme, assetsDir }) {
 export async function renderCard({ theme, assetsDir }) {
   const { ops, title, text } = buildOps({ theme, assetsDir })
 
-  const r = await host.capability('canvas.render', {
+  const buffer = await renderOps({
     width: CANVAS_SIZE,
     height: CANVAS_SIZE,
     ops,
   })
-  if (!r?.ok) throw new Error(r?.error || 'canvas.render 调用失败')
 
-  return { image: r.data.image, title, text, theme }
+  return { image: buffer.toString('base64'), title, text, theme }
 }

@@ -1,12 +1,10 @@
 id = "cngal"
 name = "国 G 周报"
-version = "1.1.0"
+version = "1.1.1"
 apiVersion = "1.x"
 exec = ["node", "app/index.js"]
 description = "每周把 CnGal 的国 G 动态、即将发售、折扣画成一张长图发到群里"
 
-# 低频插件：闲置后回收进程，有人用再拉起
-idle_stop = "2h"
 
 # 闲置回收：20 秒没动静就停进程，收到命令再拉起（这里先用短值验证）
 
@@ -16,10 +14,6 @@ permissions = ["onebot.write"]
 
 # 画图靠 canvas 服务插件；这里不再带原生模块，所以也不用锁平台
 concurrency = "session"   # 不同群并行
-[[requires]]
-kind = "plugin"
-id = "canvas"
-
 # 「国g」是短口令，不强制前缀
 [access]
 require_prefix = false
@@ -54,6 +48,7 @@ key = "groupIds"
 label = "推送群号"
 type = "string"
 default = ""
+hint = "多个群号用 | 或逗号或空格分隔都行，例如 123456 | 789012"
 
 [[settings]]
 key = "weekday"
@@ -114,7 +109,9 @@ max = 30
 # 每分钟检查一次是不是到了推送时间
 [[schedule]]
 id = "tick"
-every = "60s"
+# 用设置里的 分钟/小时/星期 生成 cron：设置一改框架就重排，
+# 不用插件自己每 60 秒轮询"到点没"
+cron = "{{minute}} {{hour}} * * {{weekday}}"
 description = "每周定时推送国 G 周报"
 
 [runtime]

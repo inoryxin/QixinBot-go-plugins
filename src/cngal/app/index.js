@@ -133,7 +133,7 @@ async function tick() {
 
 // ---------------------------------------------------------------- 服务
 
-serve({
+const app = {
   async initialize({ settings: initial }) {
     settings = initial || {}
     host.log('info', '国 G 周报启动')
@@ -142,6 +142,7 @@ serve({
 
   async set_settings({ values }) {
     settings = { ...settings, ...values }
+    if (typeof rescheduleCngal === 'function') rescheduleCngal()
     return { ok: true }
   },
 
@@ -217,4 +218,37 @@ serve({
     }
     return { ok: true }
   },
-})
+}
+serve(app)
+
+// ---- 插件自管定时（发行版）----
+// 开发线（QIXIN_EXPERIMENTAL=1）由框架的 [[schedule]] 接管，这里不重复启动。
+const __SELF_TIMER = !process.env.QIXIN_EXPERIMENTAL
+function __runTask(task) {
+  if (!__SELF_TIMER) return
+  Promise.resolve(app.run_task({ task })).catch((e) => {
+    host.log('warn', `定时 ${task} 执行失败: ${e && e.message ? e.message : e}`)
+  })
+}
+let __cngalTimer = null
+function __nextWeeklyDelay() {
+  const wd = Number(settings.weekday ?? 1), h = Number(settings.hour ?? 9), m = Number(settings.minute ?? 0)
+  const now = new Date()
+  const next = new Date(now)
+  next.setHours(h, m, 0, 0)
+  let delta = (wd - now.getDay() + 7) % 7
+  if (delta === 0 && next.getTime() <= now.getTime()) delta = 7
+  next.setDate(next.getDate() + delta)
+  return { next, delay: next.getTime() - now.getTime() }
+}
+function rescheduleCngal() {
+  if (!__SELF_TIMER) return
+  if (__cngalTimer) clearTimeout(__cngalTimer)
+  const { delay } = __nextWeeklyDelay()
+  __cngalTimer = setTimeout(async () => {
+    __runTask('tick')
+    rescheduleCngal()
+  }, delay)
+}
+rescheduleCngal()
+if (__SELF_TIMER) host.log('info', '发行版自管定时已启动')
