@@ -61,6 +61,9 @@ copy packages\jm-download.anzu <框架目录>\plugins\
 4. **文件本身**（群文件 / 私聊文件；分卷时逐卷发）
 
 失败时第 3 条会变成失败原因；有缺页会再补一句「重发会接着补下」。
+
+> 群图片只吃 **PNG**（SnowLuma/QQ 实测：同一张图 PNG 成功、JPEG 回 retcode=100），所以封面/信息图统一存 PNG，站点封面（JPEG）发送前会自动转。
+> 第 1、2 条只发一次：进程重启后队列续跑不会重复刷屏。
 给 AI 用的工具（`[[tools]]`）：`jm_download`、`jm_control`、`jm_task_status`、
 `jm_today_list`、`jm_daily_updates`、`jm_group_toggle`、`jm_library`、`jm_storage`。
 工具会把结果**自己发到会话**，AI 只需要简短回应，避免复述两遍。

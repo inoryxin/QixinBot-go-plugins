@@ -204,12 +204,12 @@ if (python) {
           { id: '518074', title: '测试本子 B', kind: '单本', tags: [], cover: '' },
         ],
       },
-      outPath: path.join(TMP, 'digest.jpg'),
+      outPath: path.join(TMP, 'digest.png'),
     })
     ok('信息图渲染', fs.existsSync(digest) && fs.statSync(digest).size > 1024, digest)
     const album = await renderAlbumImage({
       payload: { id: '422444', title: '测试本子 A', authors: ['作者甲'], tags: ['中文'], kind: '8 话 · 300 张', pdf: 'PDF 300 页（12 MB）', desc: '这是简介文本，用来测试换行。'.repeat(5), cover },
-      outPath: path.join(TMP, 'album.jpg'),
+      outPath: path.join(TMP, 'album.png'),
     })
     ok('简介卡渲染', fs.existsSync(album) && fs.statSync(album).size > 1024, album)
   } catch (e) {
@@ -232,7 +232,7 @@ if (python) {
     pages.push(p)
   }
   const pdfOut = path.join(TMP, 'book.pdf')
-  const coverOut = path.join(TMP, 'cover-out.jpg')
+  const coverOut = path.join(TMP, 'cover-out.png')
   const res = await pdfBridge.runTask({
     python,
     task: {
@@ -252,6 +252,20 @@ if (python) {
   ok('PDF 合成', res.ok === true, res.error || '')
   ok('PDF 页数', res.pages === 5, `pages=${res.pages}`)
   ok('封面缩略图', fs.existsSync(coverOut) && fs.statSync(coverOut).size > 1024, coverOut)
+  // 群图片只吃 PNG（JPEG 会 retcode=100），所以封面/Pillow 输出的魔数必须是 PNG
+  const pngMagic = (f) => {
+    try {
+      const b = fs.readFileSync(f).subarray(0, 4)
+      return b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47
+    } catch {
+      return false
+    }
+  }
+  ok('封面是 PNG', pngMagic(coverOut), coverOut)
+  // 站点封面是 JPEG：发送前要能转 PNG
+  const targetPng = path.join(TMP, 'site-cover.png')
+  const conv = pdfBridge.convertToPng(python, cover, targetPng)
+  ok('JPEG 转 PNG', conv.ok && pngMagic(conv.output || targetPng), conv.error || '')
   if (fs.existsSync(pdfOut)) {
     const head = fs.readFileSync(pdfOut).subarray(0, 5).toString('latin1')
     ok('PDF 文件头', head === '%PDF-', head)

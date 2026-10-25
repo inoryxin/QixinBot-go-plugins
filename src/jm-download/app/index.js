@@ -298,6 +298,44 @@ async function sendText(chat, text) {
  * 先按本地路径发（框架会读成 base64）；路径不在框架 data/ 下时会被拒，
  * 这时自己读文件转 base64 重试 —— 用户把「下载目录」配到 D:\ 也能出卡。
  */
+let pngWorkerPromise = null
+
+/** 探测一次 Pillow（只为了转 PNG，失败就按原图发）。 */
+async function pngWorker() {
+  if (!pngWorkerPromise) pngWorkerPromise = Promise.resolve().then(() => detectWorker())
+  return pngWorkerPromise
+}
+
+/**
+ * 群聊发送前把图片转成 PNG（带缓存）。
+ *
+ * SnowLuma/QQ 的**群图片只吃 PNG**：同一张图 png 成功、jpg 回 retcode=100
+ * （QQ 无回执）。私聊 JPEG 正常，所以只对群聊做转换。
+ */
+async function toPngForChat(chat, filePath) {
+  if (!chat || chat.chat_type !== 'group') return filePath
+  if (/\.png$/i.test(filePath)) return filePath
+  try {
+    const dst = filePath.replace(/\.(jpe?g|webp|bmp)$/i, '') + '.png'
+    try {
+      const st = fs.statSync(dst)
+      const ss = fs.statSync(filePath)
+      if (st.size > 1024 && st.mtimeMs >= ss.mtimeMs) return dst
+    } catch {
+      /* 没有缓存就转 */
+    }
+    const w = await pngWorker()
+    if (!w?.ok || !w.python) return filePath
+    const r = pdfBridge.convertToPng(w.python, filePath, dst)
+    if (r.ok && r.output) return r.output
+    warn(`转 PNG 失败，按原图发（群聊可能失败）：${r.error}`)
+    return filePath
+  } catch (error) {
+    warn(`转 PNG 出错，按原图发：${error?.message ?? error}`)
+    return filePath
+  }
+}
+
 /**
  * 发「文字 + 图片」。
  *
@@ -309,7 +347,8 @@ async function sendImageWithText(chat, text, imagePath) {
   if (!chat) return false
   const segments = []
   if (text) segments.push({ type: 'text', data: { text: String(text) } })
-  const abs = path.resolve(imagePath).replace(/\\/g, '/')
+  const sendPath = await toPngForChat(chat, imagePath)
+  const abs = path.resolve(sendPath).replace(/\\/g, '/')
   segments.push({ type: 'image', data: { file: /^[A-Za-z]:/.test(abs) ? `file:///${abs}` : `file://${abs}` } })
   try {
     if (chat.chat_type === 'group') {
@@ -448,6 +487,7 @@ function saveQueue() {
       return {
         albumId: id,
         chatKey: t.chatKey || '',
+        announced: Boolean(t.announced),
         kind: t.kind || '',
         who: t.who || '',
         whoName: t.whoName || '',
@@ -474,6 +514,7 @@ function loadQueue() {
         kind: String(it.kind || ''),
         who: String(it.who || ''),
         whoName: String(it.whoName || ''),
+        announced: Boolean(it.announced),
         control: { paused: false, deleted: false, child: null },
         stage: 'queued',
         startedAt: Date.now(),
@@ -922,7 +963,7 @@ async function runJob(job) {
   const sendTitleWithCover = async (name, id) => {
     const title = toSimplified(name) || `JM${id}`
     const dir = await albumDirOf(id)
-    const restoredCover = dir ? path.join(dir, 'cover.jpg') : ''
+    const restoredCover = dir ? path.join(dir, 'cover.png') : ''
     let cover = restoredCover && fs.existsSync(restoredCover) ? restoredCover : ''
     if (!cover) {
       try {
@@ -941,6 +982,22 @@ async function runJob(job) {
     const text = `「${title}」JM${id}`
     if (cover) await sendImageWithText(chat, text, cover)
     else await say(text)
+  }
+
+  /**
+   * 第 1、2 条消息只发一次：进程重启后队列会接着跑，
+   * 不能因为重跑就把「书名」「少女祈祷中」再刷一遍（2026-10-26 实测）。
+   */
+  const announce = async (name, id) => {
+    if (job.announced) return
+    await sendTitleWithCover(name, id)
+    await say('少女祈祷中...')
+    job.announced = true
+    const task = activeTasks.get(albumId)
+    if (task) {
+      task.announced = true
+      saveQueue()
+    }
   }
 
   await waitIfPaused(job)
@@ -984,15 +1041,11 @@ async function runJob(job) {
           control: job.control,
           // 第 1 条：封面+名字；第 2 条：少女祈祷中...
           onAlbum: async (album) => {
-            await sendTitleWithCover(album.name, album.id)
-            await say('少女祈祷中...')
+            await announce(album.name, album.id)
           },
         })
 
-    if (reused) {
-      await sendTitleWithCover(dl.album.name, dl.album.id)
-      await say('少女祈祷中...')
-    }
+    if (reused) await announce(dl.album.name, dl.album.id)
     record.title = toSimplified(dl.album.name)
     record.description = toSimplified(dl.album.description || '')
     record.pages = dl.totals.total
@@ -1107,7 +1160,7 @@ async function runJob(job) {
         quality: c.pdfQuality,
         max_dim: c.pdfMaxDim,
         parts: wantParts,
-        cover_output: path.join(dl.albumDir, 'cover.jpg'),
+        cover_output: path.join(dl.albumDir, 'cover.png'),
         chapters: dl.chapters.map((ch) => ({ name: ch.name, pages: ch.pages, aid: ch.id })),
       }
       const res = await pdfBridge.runTask({
@@ -1533,11 +1586,13 @@ async function scanLibrary(root) {
 function firstPageImage(dir, depth = 0) {
   try {
     // 优先用「已还原」的封面：原图是竖切打乱的，直接当封面会错位
-    const restored = path.join(dir, 'cover.jpg')
-    try {
-      if (fs.statSync(restored).size > 1024) return restored
-    } catch {
-      /* 没有就往下找 */
+    for (const name of ['cover.png', 'cover.jpg']) {
+      const restored = path.join(dir, name)
+      try {
+        if (fs.statSync(restored).size > 1024) return restored
+      } catch {
+        /* 没有就试下一个 */
+      }
     }
     const entries = fs.readdirSync(dir, { withFileTypes: true })
     const images = entries
@@ -1607,7 +1662,7 @@ async function buildTodayItems(root, { limit = 50 } = {}) {
   const deadline = Date.now() + 6000
   let fetched = 0
   for (const it of mapped) {
-    if (/cover\.jpg$/i.test(String(it.cover || ''))) continue
+    if (/cover\.(png|jpg)$/i.test(String(it.cover || ''))) continue
     if (fetched >= 8 || Date.now() > deadline) break
     fetched += 1
     try {
@@ -1929,7 +1984,7 @@ async function replyTodayList(session) {
         footnote: `共 ${items.length} 本 · 发漫画编号即可下载`,
         items,
       }
-      const imagePath = await renderDigestImage({ payload, outPath: path.join(DATA_DIR, 'today-list.jpg') })
+      const imagePath = await renderDigestImage({ payload, outPath: path.join(DATA_DIR, 'today-list.png') })
       const sent = await sendImageWithText(
         chat,
         `📚 今日JM 本地书架（${items.length} 本）\n想下载哪本，直接发编号即可。`,

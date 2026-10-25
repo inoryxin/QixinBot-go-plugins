@@ -359,12 +359,12 @@ async function spawnPythonRender(extraArgs, payload, target) {
 
 /** 清单信息图（封面网格）。失败抛错，调用方降级到文字版。 */
 export async function renderDigestImage({ payload, outPath } = {}) {
-  const target = outPath || path.join(dataRoot(), 'daily-digest.jpg')
+  const target = outPath || path.join(dataRoot(), 'daily-digest.png')
   return spawnPythonRender([], payload, target)
 }
 
 /** 单本简介信息卡（下载完成时发）。 */
 export async function renderAlbumImage({ payload, outPath } = {}) {
-  const target = outPath || path.join(dataRoot(), 'album-card.jpg')
+  const target = outPath || path.join(dataRoot(), 'album-card.png')
   return spawnPythonRender(['--album'], payload, target)
 }

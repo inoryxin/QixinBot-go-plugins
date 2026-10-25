@@ -223,7 +223,8 @@ def main():
     note = f"{footnote}{extra}".strip()
     draw.text((PAD_X + 4, foot_y), note or f"共 {total_n} 本", font=f_sub, fill=(120, 128, 140))
 
-    img.save(out_path, "JPEG", quality=82)
+    # 群图片只吃 PNG（JPEG 在 SnowLuma/QQ 群聊会 retcode=100），统一输出 PNG
+    img.save(out_path, "PNG")
     return 0
 
 
@@ -332,7 +333,8 @@ def render_album(out_path):
             draw.text((28, dy), ln, font=f_desc, fill=(215, 215, 222))
             dy += 32
 
-    img.save(out_path, "JPEG", quality=85)
+    # 同上看板：PNG 才能在群聊里发出去
+    img.save(out_path, "PNG")
     return 0
 
 

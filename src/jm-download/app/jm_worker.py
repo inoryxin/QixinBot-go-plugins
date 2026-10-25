@@ -232,7 +232,8 @@ def run_task(task):
                         thumb = frames[-1].copy()
                         thumb.thumbnail((600, 900), Image.LANCZOS)
                         os.makedirs(os.path.dirname(os.path.abspath(cover_out)), exist_ok=True)
-                        thumb.save(cover_out, "JPEG", quality=85)
+                        # 输出 PNG：SnowLuma/QQ 群图片只吃 PNG（JPEG 会 retcode=100）
+                        thumb.save(cover_out, "PNG")
                         cover_written = True
                     except Exception as exc:  # noqa: BLE001
                         warnings.append(f"封面生成失败：{exc}")
@@ -314,11 +315,41 @@ def _prepare(img, path, do_descramble, scramble_id, page_aid, max_dim, to_rgb):
     return to_rgb(img)
 
 
+def run_convert(argv):
+    """--convert <src> [dst]：转成 PNG。
+
+    为什么需要：SnowLuma/QQ 的**群图片只吃 PNG**（JPEG 会回 retcode=100、
+    QQ 无回执，2026-10-26 实测同一张图 png 成功、jpg 失败）。私聊不受影响。
+    """
+    from PIL import Image
+
+    if not argv:
+        emit({"t": "result", "ok": False, "error": "用法：--convert <src> [dst]"})
+        return 2
+    src = argv[0]
+    dst = argv[1] if len(argv) > 1 else os.path.splitext(src)[0] + ".png"
+    try:
+        with Image.open(src) as img:
+            img.load()
+            out = img.convert("RGBA") if img.mode in ("P", "LA") else img
+            if out.mode not in ("RGB", "RGBA"):
+                out = out.convert("RGB")
+            os.makedirs(os.path.dirname(os.path.abspath(dst)), exist_ok=True)
+            out.save(dst, "PNG")
+        emit({"t": "result", "ok": True, "output": dst})
+        return 0
+    except Exception as exc:  # noqa: BLE001
+        emit({"t": "result", "ok": False, "error": f"{type(exc).__name__}: {exc}"})
+        return 1
+
+
 def main():
     if "--check" in sys.argv[1:]:
         return run_check()
     if "--selftest" in sys.argv[1:]:
         return run_selftest()
+    if "--convert" in sys.argv[1:]:
+        return run_convert(sys.argv[sys.argv.index("--convert") + 1:])
     raw = sys.stdin.read()
     try:
         task = json.loads(raw) if raw.strip() else {}

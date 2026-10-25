@@ -87,6 +87,30 @@ export function checkWorker(pythonExe) {
  * ⚠️ 这个测试存在的唯一目的：防止再把**带扩展名**的文件名喂进哈希。
  * 那次事故里 JM1465595 第 1 页被算成 N=12（正确是 4），"还原"反而把图弄花。
  */
+/**
+ * 转 PNG（同机 Pillow）。
+ * 用途：SnowLuma/QQ 的群图片只吃 PNG —— JPEG 会 retcode=100、QQ 无回执；
+ * 私聊不受影响，所以只在群聊发送前调用。
+ */
+export function convertToPng(pythonExe, src, dst) {
+  if (!pythonExe) return { ok: false, error: '没有 Python' }
+  if (!fs.existsSync(WORKER_PATH)) return { ok: false, error: `找不到 worker 脚本：${WORKER_PATH}` }
+  const r = spawnSync(pythonExe, [WORKER_PATH, '--convert', src, dst || ''], {
+    encoding: 'utf8', timeout: 60000, windowsHide: true,
+  })
+  const out = String(r.stdout || '').trim().split(/\r?\n/).pop() || ''
+  try {
+    const json = JSON.parse(out)
+    if (json.ok) return { ok: true, output: json.output || dst }
+    return { ok: false, error: json.error || '转 PNG 失败' }
+  } catch {
+    return {
+      ok: false,
+      error: `转 PNG 输出无法解析（exit ${r.status}）：${(out || String(r.stderr || '')).slice(-160)}`,
+    }
+  }
+}
+
 export function checkSegmentation(pythonExe) {
   if (!pythonExe) return { ok: false, error: '没有 Python' };
   const r = spawnSync(pythonExe, [WORKER_PATH, '--selftest'], { encoding: 'utf8', timeout: 20000, windowsHide: true });
