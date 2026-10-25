@@ -1,9 +1,9 @@
 id = "ai-persona"
 name = "人设"
-version = "1.0.0"
+version = "1.1.0"
 apiVersion = "1.x"
 exec = ["node", "app/index.js"]
-description = "管 AI 的系统提示词和人设：说谁、怎么说话、群聊/私聊各用哪套"
+description = "管 AI 的系统提示词和人设：说谁、怎么说话、群聊/私聊各用哪套；含贴吧鱼模式（按群开关，切换后改用吧友口吻 + 语料库抽样）"
 
 # 不是 service：它要接 /人设 命令。
 # （service 插件在分发时被直接跳过，只能被别的插件调能力）
@@ -50,6 +50,27 @@ enum = ["group", "private"]
 kind = "plugin"
 name = "AI 聊天"
 value = "ai-chat"
+
+[[tools]]
+name = "tieba_add"
+description = "把一条贴吧（百度贴吧）的吧友用语/句式/梗记进语料库，贴吧鱼模式每轮会抽样使用。聊天里看到好用的说法、或群友让你记一句时调用。"
+parameters = { type = "object", properties = { phrase = { type = "string", description = "词或句式本体，例：绷不住了 / 建议直接 + 动词" }, kind = { type = "string", enum = ["slang", "pattern", "reply", "meme"], description = "slang=口癖/立场词，pattern=句式，reply=接话，meme=经典梗" }, meaning = { type = "string", description = "什么时候用、什么语气（不直接发出去）" }, bar = { type = "string", description = "出处吧名，例：孙笑川吧、李毅吧" }, example = { type = "string", description = "一句真实语感的例句" } }, required = ["phrase"] }
+
+[[tools]]
+name = "tieba_stats"
+description = "看贴吧语料库里有多少条、各类各几条、出处分布，以及当前会话是否开着贴吧鱼模式。群友问「贴吧语料有多少」时调用。"
+parameters = { type = "object", properties = { sample = { type = "number", description = "顺带抽几条示例（默认 5）" } } }
+
+[access]
+# 贴吧模式要认「@我 切换贴吧鱼模式」这种自然语言，不能强制前缀。
+# 代价是每条消息都会进 handle_message，所以里面只做字符串判断就立刻 return。
+require_prefix = false
+require_mention = false
+
+[[commands]]
+id = "tieba.status"
+usage = "贴吧"
+description = "查看贴吧鱼模式状态；贴吧 开 / 贴吧 关"
 
 [[commands]]
 id = "persona.list"
@@ -116,3 +137,49 @@ label = "说话风格补充（共用）"
 type = "text"
 default = ""
 hint = "可留空。这部分对所有人设都生效"
+
+# ---- 贴吧鱼模式（融合自 tieba-mouth 1.1.0）----
+[[settings]]
+key = "tieba_enabled"
+label = "启用贴吧鱼模式"
+type = "boolean"
+default = true
+hint = "关掉后不再认切换指令，已开着的会话也立刻恢复原人设"
+
+[[settings]]
+key = "tieba_identity"
+label = "带上身份定位（见人就骂那套）"
+type = "boolean"
+default = true
+hint = "关掉只保留原来的嘴臭腔调，不注入身份定位/对线技能"
+
+[[settings]]
+key = "tieba_require_mention"
+label = "群里必须 @ 才认切换指令"
+type = "boolean"
+default = true
+hint = "关掉后只要文字匹配就切；/贴吧 开 这种显式命令不受影响"
+
+[[settings]]
+key = "tieba_sample_count"
+label = "每轮抽几条贴吧语料"
+type = "number"
+default = 6
+min = 2
+max = 20
+hint = "太多会显得用力过猛"
+
+[[settings]]
+key = "tieba_rotate_minutes"
+label = "换一批语料的间隔（分钟）"
+type = "number"
+default = 3
+min = 1
+max = 60
+
+[[settings]]
+key = "tieba_blocked_words"
+label = "不想被抽到的语料"
+type = "string"
+default = ""
+hint = "逗号或空格隔开，命中的语料不会被抽进提示词"

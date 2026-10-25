@@ -9,9 +9,11 @@
 //   ai-chat = 只管对话（记忆、工具、调用模型），开场问本插件要提示词
 
 import { serve, host } from '../_sdk/qixin.mjs'
+import { createTieba } from './tieba.js'
 
 let settings = {}
 let ready = null
+let tieba = null
 
 const DEFAULT_PERSONAS = {
   群聊: '在群里聊天，说话简短自然，不抢话，偶尔接梗。一般一两句就够。',
@@ -132,6 +134,10 @@ async function render(chatType, chatID) {
   // 取不到（没装/没语料）就跳过，绝不影响对话。
   const flavor = await groupFlavor(chatType, chatID)
   if (flavor.length) parts.push(...flavor)
+
+  // 贴吧鱼模式：只对这个会话开着时追加（口吻 + 本轮语料抽样）
+  const tiebaParts = tieba?.promptParts(chatType, chatID) || []
+  if (tiebaParts.length) parts.push(...tiebaParts)
 
   return {
     scope,
@@ -313,10 +319,17 @@ async function manage(args) {
 }
 
 serve({
-  async initialize({ settings: s }) {
+  async initialize({ settings: s, data_dir }) {
     settings = s || {}
+    tieba = createTieba({
+      dataDir: data_dir,
+      getSettings: () => settings,
+      log: (message) => host.log('info', message),
+      warn: (message) => host.log('warn', message),
+    })
+    tieba.load()
     await ensureReady()
-    host.log('info', '人设服务已启动')
+    host.log('info', '人设服务已启动（含贴吧鱼模式）')
     return { api_version: '1.0' }
   },
 
@@ -327,6 +340,13 @@ serve({
 
   async handle_message({ session }) {
     const text = (session.text || '').trim()
+    if (!text) return { handled: false }
+
+    // 贴吧鱼模式：切换/关闭指令、状态查询。命中就由它回，不再交给 AI
+    if (tieba?.handle(session, text, (message) => host.reply(chatOf(session), message, session.message_id))) {
+      return { handled: true }
+    }
+
     if (!/^人设(\s|$)/.test(text)) return { handled: false }
     await personaCommand(session, text)
     return { handled: true }
@@ -343,6 +363,20 @@ serve({
     if (name === 'persona.manage') {
       try {
         return { ok: true, data: await manage(args) }
+      } catch (e) {
+        return { ok: false, error: e.message }
+      }
+    }
+    if (name === 'tieba_add') {
+      try {
+        return { ok: true, data: { text: tieba.add(args || {}) } }
+      } catch (e) {
+        return { ok: false, error: e.message }
+      }
+    }
+    if (name === 'tieba_stats') {
+      try {
+        return { ok: true, data: { text: tieba.stats(args || {}) } }
       } catch (e) {
         return { ok: false, error: e.message }
       }
