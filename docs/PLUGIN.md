@@ -1238,12 +1238,7 @@ AI 相关功能分散在多个插件，配置必须**跟着提供能力的插件
 |---|---|---|---|
 | `canvas` 画布服务 | `canvas.render` / `canvas.probe` | 图片合成、卡片、长图、字体 | `@napi-rs/canvas` |
 | `ai-llm` LLM 服务 | `llm.chat` / `llm.info` | 对话、识图、工具调用 | OpenAI/DeepSeek SDK、API Key |
-| `ai-voice` 发语音 | `voice.say` / `voice.preview` / `voice.cache` | TTS 语音 | `edge-tts`、音频编码器 |
 | `ai-life` 她的生活 | `life.now` / `life.set` / `life.plan` | 当前状态、日程 | 自己维护作息表 |
-| `ai-persona` 人设 | `persona.render` / `persona.manage` | 人设提示词 | 复制一套人设配置 |
-| `ai-affinity` 好感度 | `affinity.get` / `affinity.manage` | 语气/关系分 | 自己算好感度 |
-| `ai-sticker` 表情包 | `sticker.pick` / `sticker.add` / `sticker.learn` | 回复配图 | 自己维护表情库 |
-| `ai-chat` AI 聊天 | `ai.chat` / `ai.learn` / `ai.memory` | 借 AI 回复、记忆、黑话 | 自己调 LLM |
 | `db.sqlite` 内置 | `db.sqlite` | SQLite 持久化 | `better-sqlite3` 等原生模块 |
 
 声明方式：
@@ -1264,6 +1259,9 @@ if (!r?.ok) {
   return { handled: true }
 }
 ```
+
+功能插件（ai-chat / ai-voice / ai-persona / ai-affinity / ai-sticker）之间的依赖**不是官方依赖**：
+比如 `ai-voice` 需要 `ai-chat`，缺失时由「依赖」页的「功能插件依赖」提示，不会混进上面的底层依赖表。
 
 规则：
 
