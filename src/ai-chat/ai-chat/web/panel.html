@@ -38,11 +38,15 @@
   function $(id){ return document.getElementById(id) }
   function esc(t){ return String(t).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])) }
 
+  function csrf(){
+    const m = document.cookie.match(/(?:^|; )qixin_csrf=([^;]+)/)
+    return m ? decodeURIComponent(m[1]) : ''
+  }
   async function call(args){
     const body = new FormData()
     body.set('name', 'ai.learn')
     body.set('args', JSON.stringify(args))
-    const r = await fetch('/api/capabilities/call', { method: 'POST', body })
+    const r = await fetch('/api/capabilities/call', { method: 'POST', body, headers: { 'X-CSRF-Token': csrf() } })
     const j = await r.json()
     if (!j.ok) throw new Error(j.error || '调用失败')
     const inner = j.result || {}
@@ -194,7 +198,7 @@
     const body = new FormData()
     body.set('name', 'ai.memory')
     body.set('args', JSON.stringify(args))
-    const r = await fetch('/api/capabilities/call', { method: 'POST', body })
+    const r = await fetch('/api/capabilities/call', { method: 'POST', body, headers: { 'X-CSRF-Token': csrf() } })
     const j = await r.json()
     if (!j.ok) throw new Error(j.error || '调用失败')
     const inner = j.result || {}

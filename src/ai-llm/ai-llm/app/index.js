@@ -5,7 +5,7 @@ import { serve, host } from '../_sdk/qixin.mjs'
 let settings = {}
 
 async function info() {
-  return { ok: true, data: { vision: settings.vision === true, model: settings.model || '' } }
+  return { ok: true, data: { vision: settings.vision === true || settings.vision === 'true' || settings.vision === 1, model: settings.model || '' } }
 }
 
 serve({

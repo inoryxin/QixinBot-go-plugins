@@ -46,8 +46,8 @@ default = ""
 key = "vision"
 label = "模型支持图片输入（vision）"
 type = "bool"
-default = false
-hint = "DeepSeek 文本模型不支持；换 gpt-4o / qwen-vl 等再打开"
+default = true
+hint = "deepseek-flash 实测支持图片；换纯文本模型时关掉"
 
 [[settings]]
 key = "model"
