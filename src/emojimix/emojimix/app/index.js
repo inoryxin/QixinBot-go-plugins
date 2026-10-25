@@ -56,8 +56,15 @@ serve({
   },
 
   async handle_message({ session }) {
-    const list = emojisOf(session.text)
+    const raw = String(session.text || '')
+    const list = emojisOf(raw)
     if (list.length < 2) return { handled: false }
+    // 只有"整条消息基本就是 emoji"才自动合成；带正常文字就交给 AI 聊天
+    const rest = raw
+      .replace(/\p{Extended_Pictographic}(?:\uFE0F|\u200D\p{Extended_Pictographic})*/gu, '')
+      .replace(/[\s+＋,，。.!！?？~～…、]/g, '')
+      .trim()
+    if (rest) return { handled: false }
     const r = await mix(list[0], list[1])
     if (r.error) {
       // 没有这个组合就安静跳过，不回复
