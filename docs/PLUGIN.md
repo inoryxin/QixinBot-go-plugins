@@ -1620,7 +1620,8 @@ default = "小鲸鱼"
 - **没声明就写不进去**：`host.sharedSet` / `host.shared_set` 会报
   「只能写自己在 manifest 的 [[shared]] 里声明过的 key」。
   写的时候用完整 key（`<插件id>.<key>`），别只写 `key`
-- 存在 `data/shared.json`，跟插件一起备份
+- 存在框架统一存储：SQLite 模式是 `data/qixin.db`，JSON 模式是 `data/shared.json`
+- **重启、重载、禁用插件都不会丢**；只有删除插件才清掉它的共享 key
 
 ```js
 // AI 插件：读自己的
