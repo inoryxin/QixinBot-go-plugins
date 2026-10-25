@@ -224,7 +224,8 @@ async function classifyImage(dataUrl) {
     host.log('debug', `表情识别失败: ${r?.error || '无返回'}`)
     return null
   }
-  let text = typeof r.text === 'string' ? r.text : ''
+  // 能力返回统一是 {ok,data:{text}}；兼容旧字段 r.text
+  let text = typeof r.data?.text === 'string' ? r.data.text : (typeof r.text === 'string' ? r.text : '')
   host.log('debug', `表情识别原始: ${text.slice(0, 160)}`)
   const m = /\{[\s\S]*\}/.exec(text)
   if (!m) return null
