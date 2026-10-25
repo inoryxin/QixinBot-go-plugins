@@ -128,7 +128,38 @@ qixinpack dev . -web 7801 -ws 3001 -keep
 | `-web <端口>` | 控制台端口，默认 7801（被占用时改这个） |
 | `-ws <端口>` | 假协议端端口，默认 3001 |
 | `-watch` | 监听源码变动，保存后自动重打包并重载 |
+| `-runtime <包>` | 用指定运行时包启动（可重复，Node/Python 各一个） |
 | `-keep` | 退出后保留临时目录（排查用） |
+
+### 用生产运行时开发（推荐）
+
+不要用本机的 Node/Python 裸环境开发，否则依赖版本和生产不一致。
+下载 `runtime-node-windows-x64.anzu` / `runtime-python-*.anzu` 后：
+
+```powershell
+qixinpack dev . -runtime ..\runtimes\runtime-node-windows-x64.anzu
+```
+
+混合依赖就传两个：
+
+```powershell
+qixinpack dev . `
+  -runtime ..\runtimes\runtime-node-windows-x64.anzu `
+  -runtime ..\runtimes\runtime-python-windows-x64.anzu
+```
+
+效果：
+
+- dev 环境和线上用同一个 Node/Python，同一个 `node_modules` / `Lib/site-packages`
+- 插件里 `@napi-rs/canvas`、Pillow、numpy 等直接 import，版本和生产一致
+- 运行时包第一次解压到缓存，之后直接复用，不会每次重装
+- 不加 `-runtime` 才退回系统 PATH
+
+运行时包从 Gitea Release 下载：
+
+```
+http://10.0.0.140:30008/anzu/QixinBot-release/releases/tag/runtimes-v1
+```
 
 ### 完整的工具命令
 
@@ -136,6 +167,7 @@ qixinpack dev . -web 7801 -ws 3001 -keep
 qixinpack new my-plugin -name 我的插件      # 生成骨架（app/ + manifest.toml）
 qixinpack dev .                            # 起开发环境
 qixinpack dev . -watch                     # 起环境 + 改代码自动重载
+qixinpack dev . -runtime ..\runtimes\runtime-node-windows-x64.anzu  # 用生产运行时
 qixinpack test .                           # 按 manifest 跑一遍命令
 qixinpack verify -ask                      # 端到端验证（真实 WebSocket）
 qixinpack pack . -out plugins/my.anzu      # 打包
