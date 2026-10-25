@@ -285,14 +285,7 @@ key = "voice_reply"
 label = "允许语音回复"
 type = "bool"
 default = false
-hint = "需要装「发语音」插件（ai-voice）"
-
-[[settings]]
-key = "voice_prob_pct"
-label = "语音回复的概率（%）"
-type = "number"
-default = 50
-hint = "0 = 只发文字；100 = 每条都语音"
+hint = "需要装「发语音」插件（ai-voice）；概率在 ai-voice 的 chat_pct 设置"
 
 [[settings]]
 key = "split_enabled"
@@ -350,6 +343,13 @@ type = "number"
 default = 300
 min = 0
 max = 5000
+
+[[settings]]
+key = "water_groups"
+label = "只在这些群水群（留空=全部群）"
+type = "string"
+default = ""
+hint = "群号用逗号或 | 分隔；不影响被 @ 时回复"
 
 [[settings]]
 key = "sticker_pct"

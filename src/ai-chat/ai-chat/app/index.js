@@ -1079,6 +1079,14 @@ function shouldTrigger(session) {
     Number(settings.group_chance_pct ?? settings.trigger_prob) || 0))
   if (chance <= 0) return false
 
+  // 水群群号白名单（留空 = 全部）
+  const allow = String(settings.water_groups || '')
+    .split(/[,，|\s]+/).map((x) => x.trim()).filter(Boolean).map(Number)
+  if (allow.length && !allow.includes(Number(session.chat_id))) return false
+
+  // 纯图片消息不参与随机水群（被 @ 时仍然回）
+  if (!text) return false
+
   const key = session.chat_type + ':' + session.chat_id
   const cd = Math.max(0, Number(settings.cooldown) || 0) * 1000
   if (cd > 0 && lastTrigger.has(key) && Date.now() - lastTrigger.get(key) < cd) return false
@@ -1281,22 +1289,22 @@ function targetParts() {
 }
 
 async function sendSplit(chat, text) {
-  // 语音模式：按概率把整条回复转成语音（不是每条都语音）
-  const voicePct = Math.max(0, Math.min(100, Number(settings.voice_prob_pct ?? 50)))
-  const wantVoice = settings.voice_reply && voicePct > 0 && Math.random() * 100 < voicePct
-  if (wantVoice) {
+  // 语音模式：概率由「发语音」插件（ai-voice）的 chat_pct 决定
+  // 它说"跳过"就回退文字，这样两个插件的概率只用一处配置
+  if (settings.voice_reply) {
     try {
       const r = await host.capability('voice.say', {
         text,
         chat_type: chat.chat_type,
         chat_id: chat.chat_id,
         account: chat.account || '',
+        source: 'chat',
       })
       if (r?.ok) {
-        host.log('info', `语音回复已发送 p=${voicePct}%`)
+        host.log('info', `语音回复已发送 p=${r.pct ?? '?'}%`)
         return 1
       }
-      host.log('warn', '语音失败，回退文字: ' + (r?.error || ''))
+      host.log('debug', `语音跳过/失败，回退文字: ${r?.error || r?.skipped || ''}`)
     } catch (e) {
       host.log('warn', '语音失败，回退文字: ' + e.message)
     }

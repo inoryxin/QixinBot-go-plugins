@@ -1,0 +1,130 @@
+<!-- 发语音：试听 + 缓存 -->
+<h2 style="margin-top:8px">试听</h2>
+<p class="muted" style="margin:0 0 10px">
+  选个音色、输一句话，浏览器里直接播——不用发到群里。
+</p>
+
+<div class="row" style="margin-bottom:10px;flex-wrap:wrap;gap:8px">
+  <select id="vc-voice" style="width:300px"></select>
+  <input type="text" id="vc-rate" value="+0%" style="width:90px" placeholder="+0%">
+</div>
+<div class="row" style="margin-bottom:10px;gap:8px">
+  <input type="text" id="vc-text" value="晚上好呀 今天过得怎么样" style="flex:1;min-width:260px">
+  <button onclick="vcPlay()">试听</button>
+</div>
+<div id="vc-status" class="muted" style="margin-bottom:10px">就绪</div>
+
+<h2 style="margin-top:20px">语音回复概率</h2>
+<p class="muted" style="margin:0 0 10px">
+  这个设置属于 AI 聊天（是它决定回文字还是回语音），这里只是快捷入口。
+  0 = 只发文字，100 = 每条都语音。
+</p>
+<div class="row" style="gap:8px;align-items:center;margin-bottom:14px">
+  <input type="number" id="vc-prob" min="0" max="100" value="50" style="width:90px">
+  <span class="muted">%</span>
+  <button onclick="vcSaveProb()">保存概率</button>
+  <span id="vc-prob-msg" class="muted"></span>
+</div>
+
+<h2 style="margin-top:20px">缓存</h2>
+<div class="row" style="gap:10px;align-items:center">
+  <span id="vc-cache" class="muted">读取中…</span>
+  <button onclick="vcClear()">清空缓存</button>
+</div>
+
+<script>
+(function(){
+  function $(id){ return document.getElementById(id) }
+  const VOICES = [
+    ['zh-CN-XiaoxiaoNeural', '晓晓 · 温柔女声'],
+    ['zh-CN-XiaoyiNeural', '晓伊 · 活泼女声'],
+    ['zh-CN-YunxiNeural', '云希 · 年轻男声'],
+    ['zh-CN-YunjianNeural', '云健 · 沉稳男声'],
+    ['zh-CN-liaoning-XiaobeiNeural', '晓北 · 东北话'],
+    ['zh-CN-shaanxi-XiaoniNeural', '晓妮 · 陕西话'],
+  ]
+
+  async function call(name, args){
+    const body = new FormData()
+    body.set('name', name)
+    body.set('args', JSON.stringify(args))
+    const r = await fetch('/api/capabilities/call', { method: 'POST', body })
+    const j = await r.json()
+    if (!j.ok) throw new Error(j.error || '调用失败')
+    const inner = j.result || {}
+    if (inner.ok === false) throw new Error(inner.error || '插件返回失败')
+    return inner.data || {}
+  }
+
+  window.vcPlay = async function(){
+    const text = ($('vc-text').value || '').trim()
+    if (!text) return
+    $('vc-status').textContent = '合成中…'
+    try {
+      const d = await call('voice.preview', { text, voice: $('vc-voice').value, rate: $('vc-rate').value })
+      const audio = new Audio('data:' + (d.mime || 'audio/mpeg') + ';base64,' + d.audio)
+      await audio.play()
+      $('vc-status').textContent = '播放中 · ' + Math.round((d.bytes || 0) / 1024) + ' KB'
+    } catch (e) {
+      $('vc-status').textContent = '失败：' + e.message
+    }
+  }
+
+  window.vcClear = async function(){
+    try {
+      const d = await call('voice.cache', { action: 'clear' })
+      $('vc-status').textContent = '已清掉 ' + (d.cleared || 0) + ' 个缓存文件'
+      vcRefresh()
+    } catch (e) { $('vc-status').textContent = '失败：' + e.message }
+  }
+
+  async function vcRefresh(){
+    try {
+      const d = await call('voice.cache', { action: 'stats' })
+      $('vc-cache').textContent = '缓存 ' + (d.files || 0) + ' 个文件，' + Math.round((d.bytes || 0) / 1024) + ' KB'
+    } catch (e) { $('vc-cache').textContent = '读取失败：' + e.message }
+  }
+
+  async function loadProb(){
+    try {
+      const r = await fetch('/api/plugin/ai-chat/settings')
+      const j = await r.json()
+      if (j.values && j.values.voice_prob_pct !== undefined) $('vc-prob').value = j.values.voice_prob_pct
+    } catch {}
+  }
+
+  window.vcSaveProb = async function(){
+    const v = Math.max(0, Math.min(100, Number($('vc-prob').value) || 0))
+    const body = new FormData()
+    body.set('_keys', 'voice_prob_pct')
+    body.set('voice_prob_pct', String(v))
+    try {
+      const r = await fetch('/api/plugin/ai-chat/settings', { method: 'POST', body })
+      if (!r.ok) throw new Error('HTTP ' + r.status)
+      $('vc-prob-msg').textContent = '已保存 ' + v + '%'
+    } catch (e) { $('vc-prob-msg').textContent = '失败：' + e.message }
+  }
+
+  async function init(){
+    const sel = $('vc-voice')
+    sel.innerHTML = ''
+    for (const [id, name] of VOICES) {
+      const o = document.createElement('option')
+      o.value = id
+      o.textContent = name + '（' + id + '）'
+      sel.appendChild(o)
+    }
+    // 默认选中设置里的音色
+    try {
+      const r = await fetch('/api/plugin/ai-voice/settings')
+      const j = await r.json()
+      if (j.values && j.values.voice) sel.value = j.values.voice
+      if (j.values && j.values.rate) $('vc-rate').value = j.values.rate
+    } catch {}
+    vcRefresh()
+    loadProb()
+  }
+
+  init()
+})()
+</script>
