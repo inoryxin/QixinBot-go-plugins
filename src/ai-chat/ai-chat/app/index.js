@@ -1340,13 +1340,12 @@ function stickerEmotion(text) {
 }
 
 async function maybeSendSticker(chat, text) {
-  const pct = Number(settings.sticker_pct)
-  if (!(pct > 0) || Math.random() * 100 >= pct) return
   const emotion = stickerEmotion(text)
   const r = await host.capability('sticker.pick', {
     emotion,
     chat_type: chat?.chat_type || 'group',
     chat_id: chat?.chat_id || 0,
+    source: 'chat',
   })
   const url = r?.sticker?.data_url || r?.sticker?.url
   if (!r?.ok || !url) return

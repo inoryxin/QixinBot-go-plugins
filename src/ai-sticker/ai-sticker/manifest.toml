@@ -29,6 +29,10 @@ type = "string"
 [capability.parameters.properties.chat_id]
 type = "number"
 
+[capability.parameters.properties.source]
+type = "string"
+enum = ["chat", "other"]
+
 [[capability]]
 name = "sticker.learn"
 
@@ -61,6 +65,15 @@ items = { type = "string" }
 
 [capability.parameters.properties.source]
 type = "string"
+
+[[settings]]
+key = "chat_pct"
+label = "AI 回复附带表情包的概率（%）"
+type = "number"
+default = 25
+min = 0
+max = 100
+hint = "由表情包插件自己控制；卸载本插件后 AI 聊天不会再有这个选项"
 
 [[settings]]
 key = "remote_enabled"

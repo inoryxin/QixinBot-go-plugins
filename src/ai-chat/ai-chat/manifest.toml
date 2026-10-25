@@ -351,15 +351,3 @@ type = "string"
 default = ""
 hint = "群号用逗号或 | 分隔；不影响被 @ 时回复"
 
-[[settings]]
-key = "sticker_pct"
-label = "回复附带表情包的概率（%）"
-type = "number"
-default = 25
-min = 0
-max = 100
-
-# ---- 共享数据：人设 ----
-[runtime]
-kind = "node"
-version = ">=18"

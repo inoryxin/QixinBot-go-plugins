@@ -182,9 +182,17 @@ async function addStickerInner({ dataUrl, emotion, contexts, source }) {
   return { ok: true, id, local: true }
 }
 
-async function pickSticker({ emotion, context, chat_type, chat_id }) {
+async function pickSticker({ emotion, context, chat_type, chat_id, source }) {
   emotion = String(emotion || '').trim()
   context = String(context || '').trim()
+
+  // AI 聊天调用时，概率由本插件决定（和 ai-voice 的 chat_pct 一个模式）
+  if (source === 'chat') {
+    const pct = Math.max(0, Math.min(100, Number(settings.chat_pct ?? 25)))
+    if (pct <= 0 || Math.random() * 100 >= pct) {
+      return { ok: false, skipped: 'probability', pct }
+    }
+  }
 
   if (remoteOn() && remoteBase() && settings.remote_takeover !== false) {
     try {
