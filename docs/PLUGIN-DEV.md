@@ -68,6 +68,37 @@ idle_stop = "1h"
 **适合**：cngal / fortune / weather / 订阅播报 / 定时任务类
 **不适合**：ai-chat、keyword-reply、trigger、bilibili 这类随时要响应的
 
+## 6.1c 定时任务（开发线）
+
+开发线里定时由框架接管，插件只声明 + 实现 `run_task`：
+
+```toml
+[[schedule]]
+id = "check-updates"
+every = "5m"
+description = "检查更新"
+```
+
+```js
+async run_task({ task }) {
+  if (task === 'check-updates') await checkAndPush()
+  return {}
+}
+```
+
+cron 模板（`{{key}}` 会替换成设置值）：
+
+```toml
+[[schedule]]
+id = "weekly"
+cron = "{{minute}} {{hour}} * * {{weekday}}"
+```
+
+- 设置保存后框架立刻重排，不用重启
+- 停机错过 24 小时内的任务，启动时会补跑一次
+- 任务页支持暂停/恢复/手动触发，`tasks.json` 落盘
+- 只有开发线注册调度；**发行版必须插件自己 `setInterval`**
+
 ## 实验功能的边界
 
 - 只有开发线开启：闲置回收、休眠页、"到点唤醒睡着的插件"

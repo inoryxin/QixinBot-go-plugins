@@ -25,7 +25,7 @@
 ```
 my-plugin/
 ├── manifest.toml     # 常用字段都写了注释，用不到的注释掉就行
-├── app/index.js      # 最小可运行：initialize / set_settings / handle_message / run_task
+├── app/index.js      # 最小可运行：initialize / set_settings / handle_message
 ├── web/panel.html    # 可选扩展片段，不用可以删
 └── README.md         # 插件自己的说明
 ```
@@ -385,7 +385,6 @@ pip install -t deps/python <包名>
 | `version` | string | 建议 | 语义化版本 |
 | `apiVersion` | string | 建议 | 固定 `"1.x"` |
 | `exec` | string[] | ✅ | 启动命令，路径相对运行区根 |
-| `web` | string | 否 | 设置页入口，相对运行区根 |
 | `closed_source` | bool | 否 | 标记包里不含源码 |
 | `description` | string | 建议 | 一句话说明 |
 | `enabled` | bool | 否 | `false` 时永不启动 |
@@ -395,6 +394,24 @@ pip install -t deps/python <包名>
 | `priority` | int | 否 | 分发优先级，大的先收到消息（默认 0） |
 | `capability_priority` | int | 否 | 作为能力提供者的优先级，不写时沿用 `priority` |
 | `last` | bool | 否 | 兜底插件，永远排在普通插件之后 |
+| `observe` | bool | 否 | 抄送每条消息给 `observe_message`（只读） |
+| `events` | string[] | 否 | 订阅的非消息事件，如 `notice` / `request:*` |
+| `kind` | string | 否 | `plugin`（默认）/ `service`（只提供能力） |
+| `[[commands]]` | table | 否 | 指令：`id` / `usage` / `aliases` / `description` |
+| `[[settings]]` | table | 否 | 设置项：`key` / `label` / `type` / `default` / `hint` 等 |
+| `[[capability]]` | table | 否 | 能力参数 schema（提供能力时必填） |
+| `[[tools]]` | table | 否 | 给 AI 用的工具定义 |
+| `[[shared]]` | table | 否 | 声明可读写的共享数据 key |
+| `[[requires]]` | table | 否 | 依赖的插件/命令/环境 |
+| `[runtime]` | table | 否 | 解释器要求：`kind` / `version` / `platform` |
+| `[[schedule]]` | table | 否 | **仅开发线**：`every` / `cron` 定时 |
+| `use_tools` | bool | 否 | 该插件给 AI 提供工具（详情页显示工具面板） |
+| `concurrency` | string | 否 | `plugin`（默认，串行）/ `session`（同会话串行、跨会话并发） |
+| `load_order` | int | 否 | 启动顺序，小的先加载（服务插件用） |
+| `[cooldown]` | table | 否 | 冷却：`per_user` / `per_group` / `per_plugin` |
+| `[timeouts]` | table | 否 | 超时：`message` / `tool` / `event` 等 |
+
+> 完整的可解析字段以 `internal/plugin/manifest.go` 为准；上表是写插件最常用的一组。
 
 ### 2.2 完整示例
 
@@ -404,7 +421,6 @@ name = "天气"
 version = "1.0.0"
 apiVersion = "1.x"
 exec = ["node", "app/index.js"]
-web = "web/index.html"
 description = "查询城市天气"
 permissions = ["onebot.write"]
 
@@ -423,7 +439,7 @@ parameters = { type = "object", properties = { city = { type = "string" } }, req
 
 | type | 控件 |
 |---|---|
-| `text` / `string` | 单行 / 多行文本 |
+| `string` | 单行文本 |
 | `number` | 数字框（可配 min/max） |
 | `bool` 或 `boolean` | **复选框**（两种写法都认） |
 | `select` | 下拉框（配合 `options` / `option_labels`） |
@@ -497,7 +513,12 @@ default = "celsius"
 | 扩展 | 自定义 HTML 片段 | `web/panel.html`（可选） |
 | 工具 | 名称、说明 | `[[tools]]` |
 
-**不要自己写整套页面**。需要额外交互（测试按钮、预览、图表）时，只写 `web/panel.html` 片段，框架会插到「扩展」区块。
+两种方式二选一：
+
+- `web/panel.html`：**片段**，框架插到设置页的「扩展」区块（适合几个按钮/预览）
+- `web/index.html`：**完整页面**，挂到 `/plugin/<id>/panel/`（适合上传、列表、复杂管理）
+
+详情页会自动出现「打开管理面板」按钮。
 
 ### 3.2 指令列表是自动的
 
@@ -524,8 +545,8 @@ default = "celsius"
 ```
 
 框架转给插件的 `http({method,path,query,body})` 处理，插件返回
-`{status, content_type, body(base64)}`。POST 受 CSRF 保护，面板脚本需要带
-`X-CSRF-Token`（读 `qixin_csrf` Cookie）。适合做上传、列表、删除这类自管理界面。
+`{status, content_type, body(base64)}`。POST 受 CSRF 保护；框架会在页面 `<head>`
+里自动包装 `fetch` 加 `X-CSRF-Token`，面板脚本不用自己处理。
 
 ## 3.3 控件类型
 
@@ -536,7 +557,7 @@ default = "celsius"
 | `number` | 数字框（支持 `min`/`max`） | float64 |
 | `boolean` | 复选框 | bool |
 | `select` | 下拉（必须有 `options`） | string |
-| `path` | 文本框 | string |
+| `path` | 单行文本框（路径） | string |
 
 ```toml
 [[settings]]
@@ -1051,14 +1072,14 @@ WebUI 的 `GET /api/capabilities` 能看到每个能力的提供者列表和顺�
 - [ ] **能力参数 schema 写全**：`args` 里用到的每个字段都要在
       `[capability.parameters.properties.*]` 里声明，否则调用会被拒：
       `未知参数 "scope"（允许: [action content name]）`
-- [ ] **共享数据先声明**：`host.shared_set` 的 key 必须出现在 `[[shared]]`，
+- [ ] **共享数据先声明**：Node 用 `host.sharedSet`、Python 用 `host.shared_set`，key 必须出现在 `[[shared]]`，
       且写完整名 `<插件id>.<key>`
 - [ ] **设置项 type 别写错**：`bool`/`boolean` 都行，其它只认
-      `text|string|number|select|password`；写错会退化成文本框
+      `string|bool|boolean|number|select|password|path`；写错会退化成文本框并打 warn
 - [ ] **下拉框给中文**：`options` + `option_labels`
 - [ ] **消息要全量看到就开 `observe`**：`last = true` 的兜底插件收不到
       被别的插件认领的消息
-- [ ] **定时任务写在 `[[schedule]]`**，别用 `setInterval`（重启会丢）
+- [ ] **发行版定时自己管**：用 `setInterval` / `setTimeout`；`[[schedule]]` 只在开发线可用
 - [ ] **改插件 id 前先备份 `data/`**：设置和存储都在
       `data/plugins/<id>/data/`，删插件会连目录一起删（框架会留
       `.removed-<id>-<时间戳>` 备份，但别指望它）
@@ -1091,7 +1112,7 @@ observe = true
 ```js
 async observe_message({ session }) {
   // 只记不发；返回值被忽略，不会影响回复
-  await host.storage_set('last', session.text)
+  await host.storage.set('last', session.text)
   return {}
 }
 ```
@@ -1101,22 +1122,22 @@ async observe_message({ session }) {
 - 异步调用，**失败不影响用户收到的回复**
 - 带命令前缀的消息也会抄过来，自己判断要不要（`session.has_prefix`）
 
-## 6.1c 定时任务跟着设置走（`{{key}}` 模板）
+## 6.1c 定时任务：发行版自己管理
 
-"每周几几点推送"这种事不该让插件每 60 秒轮询——**声明成 cron 模板**：
+**发行版不运行 `[[schedule]]`**，也没有"到点唤醒"；进程常驻，定时由插件自己起：
 
-```toml
-[[schedule]]
-id = "tick"
-cron = "{{minute}} {{hour}} * * {{weekday}}"
+```js
+serve({
+  async initialize() {
+    setInterval(() => runCheck(), 30 * 60 * 1000) // 每 30 分钟
+    return { api_version: '1.0' }
+  },
+})
 ```
 
-- `{{key}}` 会替换成插件设置里的值（cngal 的 `hour`/`weekday`/`minute`）
-- **设置保存后框架立刻重排**，不用重启、不用插件自己判断到点没
-- 插件平时可以安心休眠，到点框架会把它叫醒
-- **补跑**：如果停机错过了这一次（24 小时内），启动时会补跑一次
-
-**限制**：模板只支持整段替换（不能写 `{{hour}}+1`），复杂逻辑还是插件里算。
+- 计时从插件启动时刻算，重启会重新计时
+- 需要"每天几点"这种墙钟时间，用 `setTimeout` 算到下一个目标时间再递归
+- `[[schedule]]`、`run_task`、暂停/补跑只在开发线（`-tags dev`）存在，说明见 [PLUGIN-DEV.md](PLUGIN-DEV.md)
 
 ## 6.1d 非消息事件要声明订阅：`events`
 
@@ -1129,7 +1150,7 @@ events = ["*"]                         # 全部
 ```
 
 - 没声明 = 收不到事件（也不会因为事件被唤醒）
-- 避免"一条通知把所有睡眠插件叫醒"
+- 避免"一条通知叫醒所有无关插件"
 - 现有实现：`group-manager` 订阅 `notice`，`selftest` 订阅 `*`
 
 ### 设置项说明：`hint`
@@ -1145,22 +1166,6 @@ hint = "多个群号用 | 或逗号或空格分隔都行"
 ```
 
 **格式、取值范围、留空含义都写在这**——不然用户只能猜。
-
-### 怎么确认休眠在工作
-
-**日志**（控制台「日志」页搜插件 id）：
-
-```
-闲置回收插件   plugin=ncm-saying idle=30m      ← 睡了
-唤醒闲置插件   plugin=ncm-saying                ← 被叫醒
-插件已加载     plugin=ncm-saying                ← 新进程起来了
-```
-
-**休眠页**每个插件显示 `睡/醒` 次数，鼠标悬停看最近一次时间。
-`0 / 0` 说明还没睡过（可能刚启动，或闲时设得太长）。
-
-**任务页**：睡着的插件任务仍在列表里，`下次运行` 来自框架调度器；
-暂停后不再显示下次时间。
 
 ### 设置热更新：必须实现 `set_settings`
 
@@ -1237,7 +1242,7 @@ default = "小鲸鱼"
 
 - key 自动加 `<插件id>.` 前缀 → `ai-chat.persona`，不会撞
 - **只有声明者能写**，其他插件只读
-- **没声明就写不进去**：`host.shared_set` 会报
+- **没声明就写不进去**：`host.sharedSet` / `host.shared_set` 会报
   「只能写自己在 manifest 的 [[shared]] 里声明过的 key」。
   写的时候用完整 key（`<插件id>.<key>`），别只写 `key`
 - 存在 `data/shared.json`，跟插件一起备份
@@ -1269,38 +1274,23 @@ const cur = await host.sharedGet('ai-chat.persona')
 
 ## 6.3 周期任务
 
-订阅类插件（B 站 UP 主、RSS、微博）**不要自己 `setInterval`**，用框架的 `[[schedule]]`：
-
-```toml
-[[schedule]]
-id = "check-updates"
-every = "5m"
-description = "检查 UP 主更新"
-```
-
-插件实现：
+**发行版**里插件常驻，周期任务自己起计时器：
 
 ```js
-async run_task({ task }) {
-  if (task === 'check-updates') {
-    await checkAndPush()
-  }
-  return { ok: true }   // 抛错会被记录到 last_error
-}
+serve({
+  async initialize() {
+    setInterval(() => checkAndPush().catch((e) => host.log('warn', e.message)), 5 * 60 * 1000)
+    return { api_version: '1.0' }
+  },
+})
 ```
 
-好处：
+注意：
 
-- **重启后自动恢复**：声明式的，不用插件在 initialize 里重建定时器
-- **WebUI 可见**：`GET /api/tasks` 能看到上次执行、次数、下次时间
-- **可手动触发**：`POST /api/tasks/run`，调试订阅插件时不用等
-- **出错有记录**：`last_error` 会保留，不用翻日志
-
-间隔格式：`30s` / `5m` / `1h`，最小 1 秒。单次执行超时 2 分钟。
-
-**为什么进框架**：轮询是多个插件共用的基础设施，各写各的会有三个问题——重启丢定时器、WebUI 看不见、出错没人知道。
-
----
+- 别在模块顶层直接 `setInterval`，放在 `initialize` 里，方便拿到设置
+- 出错要 catch，不然一个异常可能带走定时器
+- 需要重启后不重置，就把"上次执行时间"存 `host.storage`，启动时补一次
+- 开发线的 `[[schedule]]` + `run_task` 提供暂停/补跑/任务页，见 [PLUGIN-DEV.md](PLUGIN-DEV.md)
 
 ## 6.4 运行环境
 
@@ -2263,7 +2253,7 @@ async handle_message({ session }) {
 
 **三个注意点**：
 
-1. **它不活过重启**——插件进程死了任务就没了。要跨重启用 `[[schedule]]`。
+1. **它不活过重启**——插件进程死了任务就没了；要续跑就把进度/上次时间存 `host.storage`，启动时补一次。
 2. **控制台可见**——「工具」页有后台任务表，能看到哪些还在跑。
 3. **失败只记日志**——后台任务的异常不会发到群里（避免刷屏），
    插件自己决定要不要通知用户。
@@ -2273,107 +2263,49 @@ async handle_message({ session }) {
 | 需求 | 用什么 |
 |---|---|
 | 用户触发、跑一次 | `host.background` |
-| 每天 9 点跑 | `[[schedule]]` + cron |
-| 每 20 秒轮询 | `[[schedule]]` + every |
+| 每天 9 点跑 | 插件内 `setTimeout` 算到 9 点 |
+| 每 20 秒轮询 | 插件内 `setInterval` |
 | 用户触发但可能要跑 5 分钟 | `host.background` |
-| 需要重启后继续 | `[[schedule]]`（后台任务做不到） |
+| 需要重启后继续 | 进度存 `host.storage`，启动时续跑 |
 
-## 6.18 定时任务：固定间隔和 cron
+## 6.18 定时任务（发行版）
 
-插件在 manifest 里声明，宿主负责调度。**插件只实现 `plugin.run_task`**。
+发行版没有框架调度，插件常驻，自己起计时器。
 
-```toml
-# 固定间隔
-[[schedule]]
-id = "poll"
-every = "20s"
-description = "每 20 秒轮询一次订阅更新"
-
-# cron（标准 5 段：分 时 日 月 周）
-[[schedule]]
-id = "daily-report"
-cron = "0 9 * * *"
-description = "每天 9 点推日报"
-
-# 带秒的 6 段
-[[schedule]]
-id = "heartbeat"
-cron = "*/30 * * * * *"
-description = "每 30 秒一次"
-```
-
-**两个都写时 `cron` 优先**。
-
-### cron 表达式速查
-
-| 写法 | 含义 |
-|---|---|
-| `0 9 * * *` | 每天 9:00 |
-| `*/10 * * * *` | 每 10 分钟 |
-| `0 */2 * * *` | 每 2 小时整点 |
-| `30 8 * * 1-5` | 工作日 8:30 |
-| `0 0 1 * *` | 每月 1 号 0 点 |
-| `0 9 * * mon` | 每周一 9 点（星期可写英文缩写） |
-| `*/30 * * * * *` | 每 30 秒（6 段，第一位是秒） |
-
-### 插件里怎么写
+### 固定间隔
 
 ```js
 serve({
-  async run_task({ task }) {
-    if (task === 'poll') {
-      await checkSubscriptions()
-      return { ok: true, summary: '检查了 5 个订阅' }
-    }
-    if (task === 'daily-report') {
-      await sendDailyReport()
-      return { ok: true }
-    }
+  async initialize() {
+    setInterval(() => checkSubscriptions().catch((e) => host.log('warn', e.message)), 20 * 1000)
+    return { api_version: '1.0' }
   },
 })
 ```
 
-**返回的 `summary` 会显示在控制台的"定时任务"表格里**（排查时有用）。
-
-### 控制台能做什么
-
-控制台「工具」页的下半部分是定时任务表：
-
-```
-插件        任务           触发          上次执行      下次          次数  状态
-ts3-tracker poll           15s          10-24 20:15  10-24 20:15   128   运行中   [运行] [暂停]
-cngal       tick           60s          10-24 20:15  10-24 20:16   32    运行中   [运行] [暂停]
-bilibili    daily-report   0 9 * * *    —            10-25 09:00   0     运行中   [运行] [暂停]
-```
-
-| 按钮 | 作用 |
-|---|---|
-| **运行** | 立刻触发一次（调试订阅插件很有用） |
-| **暂停** | 停止调度，但**不卸载插件**；再点恢复 |
-| **恢复** | 重新开始按计划跑 |
-
-**暂停状态会落盘**（`data/tasks.json`）——重启后还是暂停的。
-
-### 宿主保证的事
-
-1. **重启后自动恢复**：`last_run` / `runs` / `paused` 都存在 `data/tasks.json`
-2. **单次执行超时 2 分钟**：卡死的任务不会永远占着
-3. **失败有记录**：错误显示在表格的"状态"列
-4. **插件卸载时自动停**：任务 goroutine 跟着 `h.Done()` 退出
-
-### 别在插件里自己 setInterval
+### 每天固定时间
 
 ```js
-// ❌ 不要这样
-setInterval(() => check(), 20000)
-
-// ✅ 声明出来
-// manifest.toml: [[schedule]] id="poll" every="20s"
-async run_task({ task }) { if (task === 'poll') await check() }
+function scheduleDaily(hour, minute, fn) {
+  const now = new Date()
+  const next = new Date(now)
+  next.setHours(hour, minute, 0, 0)
+  if (next <= now) next.setDate(next.getDate() + 1)
+  setTimeout(async () => {
+    try { await fn() } catch (e) { host.log('warn', e.message) }
+    scheduleDaily(hour, minute, fn)
+  }, next - now)
+}
 ```
 
-**为什么**：自己起的定时器，宿主看不见、停不掉、重启就丢、出错没记录。
-声明出来之后，暂停/恢复/手动触发/失败统计全都是现成的。
+### 注意
+
+1. 计时器放在 `initialize`，能拿到设置
+2. 定时器回调必须 `catch`，否则一次异常可能中断
+3. 重启会重新计时；需要不重置就把上次执行时间/进度存 `host.storage`
+4. 定时任务出错只在日志里，是否通知用户由插件决定
+
+开发线才有 `[[schedule]]` + `run_task`（暂停、补跑、任务页），见 [PLUGIN-DEV.md](PLUGIN-DEV.md)。
 
 ## 6.19 结构化命令：让宿主帮你解析参数
 
@@ -2796,9 +2728,9 @@ per_user = "3s"            # 但同一个用户 3 秒一次
 per_group = "1s"           # 同一个群 1 秒一次
 ```
 
-### 定时任务和消息共享同一把锁
+### 定时任务和消息共享同一把锁（开发线）
 
-`run_task` 也走同一把锁——任务的 `plugin.run_task` 正在跑时，
+开发线的 `run_task` 也走同一把锁——任务的 `plugin.run_task` 正在跑时，
 这个插件的消息会等它（反之亦然）。
 
 **所以定时任务别做太慢的事**：超过 2 分钟会被超时打断，但期间消息一直在等。
@@ -3072,18 +3004,14 @@ host.log('info', '查询成功', { city, ms: 120 })
 ```js
 // ❌ 每轮心跳都打一条 info：30 秒一条，一天 2880 条，
 //    真正的消息日志全被挤没了
-async run_task({ task }) {
-  host.log('info', `定时任务执行: ${task}`)
-}
+setInterval(() => {
+  host.log('info', '定时任务执行')
+}, 30 * 1000)
 
-// ✅ 成功不吭声，异常才说话（框架已经会记「定时任务失败」）
-async run_task({ task }) {
-  try {
-    await doWork()
-  } catch (e) {
-    host.log('error', `定时任务 ${task} 失败: ${e.message}`)
-  }
-}
+// ✅ 成功不吭声，异常才说话
+setInterval(() => {
+  doWork().catch((e) => host.log('error', `定时任务失败: ${e.message}`))
+}, 30 * 1000)
 ```
 
 **排查时最该看的两条日志**（框架打的，INFO 级）：
@@ -3435,7 +3363,7 @@ exec = ["app/weather.exe"]
 | 捕获异常后静默 | 用户等不到回复 | 打日志 + 提示 |
 | `usage` 里写 `/` | 配了前缀就永远不触发 | 交给框架加，加载时会自动剥 |
 | `require_prefix = false` 却不配 `allow_users` | 陌生人能控家电 | 有副作用就配白名单 |
-| 自己 `setInterval` 做定时 | 重启丢失、WebUI 看不见 | `[[schedule]]` + `run_task` |
+| 发行版想用 `[[schedule]]` | 发行版不注册，任务不会跑 | 插件内 `setInterval` 自管 |
 | 自己建文件存状态 | 路径乱、备份漏 | `host.storage` |
 | 推送时传 `account: 'main'` | 多账号或改名就坏 | 不传，框架用默认账号 |
 | 带原生模块却不写 `platform` | 换系统启动崩 | `[runtime] platform = "..."` |
@@ -3479,7 +3407,7 @@ exec = ["app/weather.exe"]
 ### 14.4 数据与依赖
 
 - [ ] 状态存 `host.storage` 或 `data/`，不写 `app/`
-- [ ] 定时任务用 `[[schedule]]`，不自己 `setInterval`
+- [ ] 发行版定时自己用 `setInterval` / `setTimeout`（开发线才用 `[[schedule]]`）
 - [ ] 推送不传 `account`（交给框架）
 - [ ] 带原生模块的包写了 `platform`
 - [ ] 包里没有 `node_modules/.cache`、测试文件、`.git`
