@@ -25,15 +25,22 @@ const EXTRA_CANDIDATES = [
 
 /**
  * 找可用的 Python 解释器。
- * 顺序：配置路径 → py 启动器 → PATH 里的 python → 常见安装位置。
+ * 顺序：插件设置里的路径 → 框架配置的 QIXIN_PYTHON → py 启动器 → PATH 里的
+ * python → 常见安装位置。
+ *
+ * QIXIN_PYTHON 是管理员在控制台「运行时环境」里配的路径（data/runtime.json），
+ * 框架会注入给每个插件；插件不该再写死 C:\... 或自己猜系统 PATH 的版本。
+ *
  * ⚠️ 如果**用户明确配置了路径**但它不可用，回退时必须在返回值里标出来（configuredMissing），
  * 否则会出现"设置里填了个错路径，程序悄悄用了另一个解释器"这种查不出来的怪事。
  */
 export function findPython(configured = '') {
   const tried = [];
   const conf = String(configured || '').trim();
+  const fromHost = String(process.env.QIXIN_PYTHON || '').trim();
   const candidates = [];
   if (conf) candidates.push(conf);
+  if (fromHost && fromHost !== conf) candidates.push(fromHost);
   candidates.push('py', 'python', ...EXTRA_CANDIDATES);
 
   const configuredMissing = Boolean(conf) && !fs.existsSync(conf);

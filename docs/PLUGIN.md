@@ -3254,6 +3254,51 @@ app/index.js → app/node_modules（没有）→ my-plugin/node_modules（有）
 2. **单文件 32MB 上限** —— 超过会报错，大二进制建议用 `[runtime]` 声明外部依赖
 3. **原生模块要装对平台** —— `better-sqlite3` 这类在 Windows 编的，拿到 Linux 跑不了
 
+### Python 依赖：以 Pillow 为例
+
+装进插件的 `deps/python/`，框架会自动把该目录加进 `PYTHONPATH`：
+
+```powershell
+cd my-plugin
+
+# 用服务器上配置的 Python（版本要和运行时环境一致）
+& "C:\qqbot\tools\py\python.exe" -m pip install `
+  --target .\deps\python --upgrade --no-cache-dir Pillow
+
+# 有 requirements.txt 时
+& "C:\qqbot\tools\py\python.exe" -m pip install `
+  --target .\deps\python -r requirements.txt
+```
+
+验证：
+
+```powershell
+$env:PYTHONPATH = "$PWD\deps\python"
+& "C:\qqbot\tools\py\python.exe" -c "from PIL import Image; print(Image.__version__)"
+```
+
+manifest 正常写：
+
+```toml
+exec = ["python", "app/main.py"]
+```
+
+框架启动时会用运行时环境里配置的 Python，并注入 `PYTHONPATH=deps/python`，所以代码里直接：
+
+```python
+from PIL import Image
+```
+
+即可，不用改 `sys.path`。
+
+注意：
+
+- **Python 版本要匹配**：服务器是 3.12，就给 3.12 装；Pillow 的 wheel 是 `cp312-win_amd64` 这类平台/版本专用包
+- 开发机和服务器的 Python 版本不同时，在服务器同版本环境里重装依赖
+- `deps/python` 会打进 `.anzu`（已验证），单文件别超过 32MB
+- 建议先删旧目录再装，避免 `--target` 留下旧版本文件
+- 换平台要重装对应 wheel；跨平台分发就分平台打包
+
 ### 非 Node 插件的依赖
 
 - **Python**：`pip install -t deps/python`，框架自动设 `PYTHONPATH`

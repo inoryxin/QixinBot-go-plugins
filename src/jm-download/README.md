@@ -103,6 +103,28 @@ copy packages\jm-download.anzu <框架目录>\plugins\
 | `llm.chat` 能力（ai-llm 插件） | 日文标题翻译 | 只做繁→简，标题保留日文 |
 | 中文字体 | 信息图里的中文/数字 | 缺字体时渲染失败 → 自动降级文字版 |
 
+Pillow 可以装系统里，也可以塞进插件的 `deps/python`（框架会把 `deps/python`
+加进 `PYTHONPATH`，不用动系统环境）：
+
+```powershell
+# 目标机器上执行；Pillow 的 wheel 是平台相关的，Windows 装出来的不能拷到 Linux
+pip install --target <插件运行区>\deps\python Pillow
+```
+
+Python 解释器优先级：插件设置 `pythonPath` → 框架「运行时环境」的 `QIXIN_PYTHON`
+→ `py` 启动器 → PATH 的 `python` → 常见安装位置。**不要写死 `C:\Python3xx`**。
+
+### 运行时环境（框架注入，不用自己猜路径）
+
+| 变量 | 这个插件怎么用 |
+|---|---|
+| `QIXIN_DATA_DIR` | 插件数据根目录（**绝对路径**）；优先用它，`initialize` 的 `data_dir` 也认 |
+| `QIXIN_PYTHON` | 控制台「运行时环境」配的 Python；`findPython` 在插件设置之后优先用它 |
+| `QIXIN_PLUGIN_DIR` / `QIXIN_PLUGIN_ID` | 只写进启动日志，方便排查"到底加载的哪个运行区" |
+| `QIXIN_EXPERIMENTAL` | 只写日志。本插件不依赖框架定时（发行版/开发线都用自己的 `setInterval`） |
+
+启动日志里会有一行 `运行环境`，直接显示 `dataDir` / `python` 来源，排障先看它。
+
 ---
 
 ## 数据目录（升级不丢）

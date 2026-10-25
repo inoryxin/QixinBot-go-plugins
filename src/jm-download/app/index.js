@@ -42,9 +42,13 @@ import {
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const PLUGIN_DIR = path.resolve(HERE, '..')
-// QIXIN_DATA_DIR 由框架注入，但可能是相对路径（相对框架工作目录，不是插件目录）。
-// 运行区布局固定是 data/plugins/<id>/data，从 app/ 往上推更可靠。
-const DATA_DIR = path.resolve(PLUGIN_DIR, 'data')
+// 数据目录优先用框架注入的 QIXIN_DATA_DIR（运行时路径，绝对路径）；
+// 直接 `node app/selftest.mjs` 或本地调试没有这个变量时，退回运行区的 data/。
+// initialize 里的 data_dir 也是同一个路径，两处都认。
+const ENV_DATA_DIR = String(process.env.QIXIN_DATA_DIR || '').trim()
+let DATA_DIR = ENV_DATA_DIR && path.isAbsolute(ENV_DATA_DIR)
+  ? ENV_DATA_DIR
+  : path.resolve(PLUGIN_DIR, 'data')
 
 // ───────────────────────── 模块级状态 ─────────────────────────
 
@@ -2280,9 +2284,12 @@ function stopTimers() {
 }
 
 serve({
-  async initialize({ settings: initial }) {
+  async initialize({ settings: initial, data_dir, plugin_id }) {
     settings = initial || {}
-    // 数据目录固定为运行区的 data/，不跟配置走（配置走 downloadDir）
+    // 数据目录用框架给的（绝对路径）；没有就退回运行区 data/。
+    // 这一步也覆盖"手工改过 runtime_dir"的情况，不靠猜目录层级。
+    const fromHost = String(data_dir || '').trim()
+    if (fromHost && path.isAbsolute(fromHost)) DATA_DIR = fromHost
     fs.mkdirSync(DATA_DIR, { recursive: true })
 
     configureDaily({
@@ -2308,6 +2315,13 @@ serve({
     }, 5000)
 
     log(`禁漫下载已就绪：目录 ${downloadRoot()}，输出 ${cfg().outputFormat}，队列 ${resumed} 本`)
+    // 把"路径从哪来"写进日志：出问题时一眼能看出用的是框架配置还是插件设置
+    log('运行环境', {
+      plugin: plugin_id || process.env.QIXIN_PLUGIN_ID || '',
+      dataDir: DATA_DIR,
+      python: process.env.QIXIN_PYTHON || '自动探测',
+      experimental: process.env.QIXIN_EXPERIMENTAL === '1',
+    })
     return { api_version: '1.0' }
   },
 
