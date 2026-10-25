@@ -351,6 +351,14 @@ default = 300
 min = 0
 max = 5000
 
+[[settings]]
+key = "sticker_pct"
+label = "回复附带表情包的概率（%）"
+type = "number"
+default = 25
+min = 0
+max = 100
+
 # ---- 共享数据：人设 ----
 [runtime]
 kind = "node"

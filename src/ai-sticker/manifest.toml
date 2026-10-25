@@ -1,0 +1,94 @@
+id = "ai-sticker"
+name = "表情包"
+version = "1.0.0"
+apiVersion = "1.x"
+exec = ["node", "app/index.js"]
+description = "给 AI 聊天配表情包：情绪/场景标签、后台上传、远程表情库接管、自动偷表情包"
+
+# 要观察消息里的图片才能偷表情包
+observe = true
+
+provides = ["sticker.pick@1", "sticker.add@1"]
+
+[[capability]]
+name = "sticker.pick"
+
+[capability.parameters]
+type = "object"
+required = ["emotion"]
+
+[capability.parameters.properties.emotion]
+type = "string"
+
+[capability.parameters.properties.context]
+type = "string"
+
+[capability.parameters.properties.chat_type]
+type = "string"
+
+[capability.parameters.properties.chat_id]
+type = "number"
+
+[[capability]]
+name = "sticker.add"
+
+[capability.parameters]
+type = "object"
+required = ["data_url"]
+
+[capability.parameters.properties.data_url]
+type = "string"
+
+[capability.parameters.properties.emotion]
+type = "string"
+
+[capability.parameters.properties.contexts]
+type = "array"
+items = { type = "string" }
+
+[capability.parameters.properties.source]
+type = "string"
+
+[[settings]]
+key = "steal_private"
+label = "私聊自动收藏表情包"
+type = "bool"
+default = true
+
+[[settings]]
+key = "steal_group_pct"
+label = "群聊偷图概率（%）"
+type = "number"
+default = 15
+min = 0
+max = 100
+
+[[settings]]
+key = "remote_enabled"
+label = "启用远程表情库"
+type = "bool"
+default = false
+
+[[settings]]
+key = "remote_url"
+label = "远程表情库地址"
+type = "string"
+default = "https://home.inory.xin:13000/"
+
+[[settings]]
+key = "remote_user"
+label = "远程库用户名"
+type = "string"
+default = "in0ryxin"
+
+[[settings]]
+key = "remote_pass"
+label = "远程库密码"
+type = "password"
+default = ""
+
+[[settings]]
+key = "remote_takeover"
+label = "远程优先，本地兜底"
+type = "bool"
+default = true

@@ -1310,7 +1310,42 @@ async function sendSplit(chat, text) {
     }
     await host.reply(chat, parts[i])
   }
+  try { await maybeSendSticker(chat, text) } catch (e) { host.log('debug', '表情包跳过: ' + e.message) }
   return parts.length
+}
+
+// 按概率给回复配一张表情包（由 ai-sticker 提供，插件不存在就静默跳过）
+function stickerEmotion(text) {
+  const t = String(text || '')
+  if (/晚安|睡了|困/.test(t)) return '晚安'
+  if (/哈哈|笑|开心|好耶|嘿嘿/.test(t)) return '开心'
+  if (/难过|哭|委屈|呜呜/.test(t)) return '难过'
+  if (/生气|气死|烦|讨厌/.test(t)) return '生气'
+  if (/害羞|脸红|喜欢|么么|亲/.test(t)) return '害羞'
+  if (/无语|离谱|服了/.test(t)) return '无语'
+  if (/吃|饿|饭/.test(t)) return '吃饭'
+  if (/摸鱼|累|躺/.test(t)) return '摸鱼'
+  return '开心'
+}
+
+async function maybeSendSticker(chat, text) {
+  const pct = Number(settings.sticker_pct)
+  if (!(pct > 0) || Math.random() * 100 >= pct) return
+  const emotion = stickerEmotion(text)
+  const r = await host.capability('sticker.pick', {
+    emotion,
+    chat_type: chat?.chat_type || 'group',
+    chat_id: chat?.chat_id || 0,
+  })
+  const url = r?.sticker?.data_url || r?.sticker?.url
+  if (!r?.ok || !url) return
+  let file = url
+  if (url.startsWith('data:')) {
+    const b64 = url.slice(url.indexOf(',') + 1)
+    file = 'base64://' + b64
+  }
+  await host.sendMessage(chat, [{ type: 'image', data: { file } }])
+  host.log('info', `表情包已发送 ${emotion}`)
 }
 
 async function respond(session, userText, extraPrompt, images) {
