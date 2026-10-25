@@ -46,6 +46,13 @@ serve({
     return { api_version: '1.0' }
   },
 
+  // 设置保存后框架会推过来：不接这个回调，改了群号也得重启才生效
+  async set_settings({ values }) {
+    settings = { ...settings, ...(values || {}) }
+    host.log('info', '设置已更新', { auto_groups: settings.auto_groups })
+    return { ok: true }
+  },
+
   async handle_message({ session }) {
     const text = (session.text ?? '').trim().replace(/^\/+/, '')
     if (!/^网抑云$/.test(text)) return { handled: false }
@@ -72,7 +79,7 @@ serve({
     let ok = 0
     for (const gid of [...new Set(groups)]) {
       try {
-        await host.send_message({ chat_type: 'group', chat_id: gid }, [
+        await host.sendMessage({ chat_type: 'group', chat_id: gid }, [
           { type: 'text', data: { text } },
         ])
         ok++
