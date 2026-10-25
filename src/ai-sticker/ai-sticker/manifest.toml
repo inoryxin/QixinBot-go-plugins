@@ -53,7 +53,7 @@ type = "string"
 key = "remote_enabled"
 label = "启用远程表情库"
 type = "bool"
-default = false
+default = true
 
 [[settings]]
 key = "remote_url"
@@ -62,16 +62,10 @@ type = "string"
 default = "https://home.inory.xin:13000/"
 
 [[settings]]
-key = "remote_user"
-label = "远程库用户名"
-type = "string"
-default = "in0ryxin"
-
-[[settings]]
 key = "remote_pass"
-label = "远程库密码"
+label = "远程库管理员密码"
 type = "password"
-default = ""
+default = "in0ryxin"
 
 [[settings]]
 key = "remote_takeover"

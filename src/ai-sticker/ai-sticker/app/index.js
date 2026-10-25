@@ -31,30 +31,88 @@ async function putImage(id, dataUrl) {
 }
 async function getImage(id) { return await host.storage.get(`sticker:img:${id}`) }
 
-function basicAuth() {
-  const u = String(settings.remote_user || '')
-  const p = String(settings.remote_pass || '')
-  return 'Basic ' + Buffer.from(`${u}:${p}`).toString('base64')
-}
 function remoteBase() { return String(settings.remote_url || '').replace(/\/+$/, '') }
 function remoteOn() { return settings.remote_enabled === true || settings.remote_enabled === 'true' || settings.remote_enabled === 1 }
 
-async function remoteReq(path, opts = {}) {
-  const base = remoteBase()
-  if (!base) throw new Error('未配置远程地址')
-  const ctrl = new AbortController()
-  const timer = setTimeout(() => ctrl.abort(), 8000)
-  try {
-    const resp = await fetch(base + path, {
-      ...opts,
-      signal: ctrl.signal,
-      headers: { authorization: basicAuth(), ...(opts.headers || {}) },
-    })
-    const text = await resp.text()
-    let body = null
-    try { body = JSON.parse(text) } catch { body = text }
-    return { status: resp.status, body }
-  } finally { clearTimeout(timer) }
+// 远程库（祈歆表情包）是密码登录 + Cookie 会话：
+//   POST /api/login {password}  -> Set-Cookie
+//   GET  /api/state            -> { images:[{url,emotion,usage,tags,...}] }
+//   POST /api/upload           -> {files:[{data,category,tags,emotion,usage}]}
+let remoteCookie = ''
+const EMO_CODE = { '开心': 'happy', '难过': 'sad', '生气': 'angry', '害羞': 'shy', '无语': 'confused', '惊讶': 'confused', '安慰': 'love', '期待': 'happy', '困': 'tired', '晚安': 'tired', '吃饭': 'happy', '摸鱼': 'tired' }
+const CODE_EMO = { happy: '开心', sad: '难过', angry: '生气', shy: '害羞', confused: '无语', tired: '困', love: '害羞' }
+
+async function remoteLogin() {
+  const r = await fetch(remoteBase() + '/api/login', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ password: String(settings.remote_pass || '') }),
+  })
+  if (!r.ok) throw new Error('远程库登录失败')
+  const sc = typeof r.headers.getSetCookie === 'function' ? r.headers.getSetCookie() : []
+  const raw = sc.length ? sc.join('; ') : (r.headers.get('set-cookie') || '')
+  remoteCookie = raw.split(/,(?=[^;]+?=)/).map((x) => x.split(';')[0]).join('; ')
+}
+
+async function remoteJSON(path, opts = {}, retry = true) {
+  if (!remoteBase()) throw new Error('未配置远程地址')
+  const headers = { ...(opts.headers || {}) }
+  if (remoteCookie) headers.cookie = remoteCookie
+  const resp = await fetch(remoteBase() + path, { ...opts, headers, signal: AbortSignal.timeout(10000) })
+  let body = null
+  try { body = await resp.json() } catch { body = null }
+  if (resp.status === 401 && retry) {
+    await remoteLogin()
+    return remoteJSON(path, opts, false)
+  }
+  return { status: resp.status, body }
+}
+
+async function remotePick(emotion, context) {
+  const r = await remoteJSON('/api/state')
+  if (r.status >= 300 || !r.body) throw new Error('远程库读取失败')
+  const imgs = Array.isArray(r.body.images) ? r.body.images : []
+  let pool = imgs
+  if (emotion) {
+    const code = EMO_CODE[emotion]
+    const matched = imgs.filter((i) => (code && i.emotion === code) || (context && (i.usage || []).includes(context)))
+    if (matched.length) pool = matched
+  }
+  if (!pool.length) throw new Error('远程库没有匹配的表情')
+  const img = pool[Math.floor(Math.random() * pool.length)]
+  return {
+    ok: true,
+    remote: true,
+    sticker: {
+      id: img.id,
+      emotion: CODE_EMO[img.emotion] || emotion,
+      contexts: Array.isArray(img.usage) ? img.usage.slice(0, 2) : [],
+      data_url: remoteBase() + img.url,
+    },
+  }
+}
+
+async function remoteAdd({ dataUrl, emotion, contexts }) {
+  const ext = /^data:image\/(\w+)/.exec(dataUrl)
+  const name = `ai-${Date.now()}.${ext ? ext[1] : 'png'}`
+  const r = await remoteJSON('/api/upload', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      files: [{
+        name,
+        data: dataUrl,
+        category: 'AI',
+        tags: [emotion, ...(contexts || [])].filter(Boolean).slice(0, 8),
+        emotion: EMO_CODE[emotion] || 'happy',
+        usage: contexts || [],
+      }],
+    }),
+  })
+  if (r.status >= 300) throw new Error(`远程上传失败 HTTP ${r.status}`)
+  const ok = (r.body?.added?.length || 0) + (r.body?.skipped?.length || 0) > 0
+  if (!ok) throw new Error('远程库没有接受这张图')
+  return true
 }
 
 // 远程优先，失败回退本地
@@ -65,15 +123,10 @@ async function addSticker({ dataUrl, emotion, contexts, source }) {
   const list = await loadIndex()
   if (list.some((s) => s.hash === hash)) return { ok: true, duplicate: true }
 
-  if (remoteOn()) {
+  if (remoteOn() && remoteBase()) {
     try {
-      const r = await remoteReq('/api/stickers', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ data_url: dataUrl, emotion, contexts, source: source || 'local' }),
-      })
-      if (r.status < 300) return { ok: true, remote: true }
-      host.log('warn', `远程库存失败 HTTP ${r.status}，回退本地`)
+      await remoteAdd({ dataUrl, emotion, contexts })
+      return { ok: true, remote: true }
     } catch (e) {
       host.log('warn', `远程库不可用，回退本地: ${e.message}`)
     }
@@ -90,17 +143,9 @@ async function pickSticker({ emotion, context, chat_type, chat_id }) {
   emotion = String(emotion || '').trim()
   context = String(context || '').trim()
 
-  if (remoteOn() && settings.remote_takeover !== false) {
+  if (remoteOn() && remoteBase() && settings.remote_takeover !== false) {
     try {
-      const q = new URLSearchParams()
-      if (emotion) q.set('emotion', emotion)
-      if (context) q.set('context', context)
-      const r = await remoteReq('/api/stickers/pick?' + q.toString())
-      if (r.status < 300 && r.body) {
-        const st = r.body.sticker || r.body.data || r.body
-        const url = st.data_url || st.url || st.file
-        if (url) return { ok: true, sticker: { ...st, data_url: url }, remote: true }
-      }
+      return await remotePick(emotion, context)
     } catch (e) {
       host.log('debug', `远程取表情失败，回退本地: ${e.message}`)
     }
@@ -237,8 +282,9 @@ serve({
       }
       if (method === 'POST' && p === '/remote/test') {
         try {
-          const r = await remoteReq('/api/stickers?limit=1')
-          return json({ ok: r.status < 300, status: r.status })
+          const r = await remoteJSON('/api/state')
+          const n = Array.isArray(r.body?.images) ? r.body.images.length : 0
+          return json({ ok: r.status < 300, status: r.status, count: n })
         } catch (e) {
           return json({ ok: false, error: e.message })
         }

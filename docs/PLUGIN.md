@@ -509,7 +509,25 @@ default = "celsius"
 
 插件不需要维护另一份文档。
 
-### 3.3 控件类型
+#### 3.2b 插件自己的管理面板（可选）
+
+如果插件目录里有 `web/index.html`，框架会把它挂到：
+
+```
+/plugin/<插件 id>/panel/
+```
+
+插件详情页会自动出现「打开管理面板」按钮。面板里的请求走：
+
+```
+/api/plugin/<插件 id>/http/*
+```
+
+框架转给插件的 `http({method,path,query,body})` 处理，插件返回
+`{status, content_type, body(base64)}`。POST 受 CSRF 保护，面板脚本需要带
+`X-CSRF-Token`（读 `qixin_csrf` Cookie）。适合做上传、列表、删除这类自管理界面。
+
+## 3.3 控件类型
 
 | type | 渲染 | 存的值 |
 |---|---|---|

@@ -8,20 +8,17 @@
 - 可接远程表情库（远程优先，失败回退本地）
 - 自动偷表情包：**复用 ai-chat 主对话那一次 LLM 调用**——图片本来就发给模型了，让它在回复末尾顺手带一行标签，不再单独调视觉模型
 
-## 远程库协议
+## 远程库
 
-配置 `remote_url`（默认 `https://home.inory.xin:13000`）、`remote_user`、`remote_pass`，使用 HTTP Basic Auth。
-
-约定接口（可自行适配服务端）：
+默认接 `https://home.inory.xin:13000`（祈歆表情包），密码登录：
 
 ```
-GET  /api/stickers/pick?emotion=开心&context=打招呼
-     -> {"ok":true,"sticker":{"data_url":"..."}}  或 {"url":"https://..."}
-
-POST /api/stickers
-     {"data_url":"data:image/png;base64,...","emotion":"开心","contexts":["打招呼"],"source":"steal"}
-     -> 2xx 表示入库成功
+POST /api/login   {"password":"..."}        -> Set-Cookie
+GET  /api/state                              -> {images:[{url,emotion,usage,tags,...}]}
+POST /api/upload  {"files":[{data,category,tags,emotion,usage}]}
 ```
+
+情绪映射：中文标签 ↔ 远程的 happy/sad/angry/shy/confused/tired/love。
 
 远程开启且 `remote_takeover=true` 时：取图先走远程；收藏/上传优先远程，远程失败才存本地。
 
@@ -37,5 +34,5 @@ POST /api/stickers
 | key | 说明 |
 |---|---|
 | remote_enabled | 启用远程库 |
-| remote_url / remote_user / remote_pass | 远程库连接 |
+| remote_url / remote_pass | 远程库地址与管理员密码 |
 | remote_takeover | 远程优先、本地兜底 |
