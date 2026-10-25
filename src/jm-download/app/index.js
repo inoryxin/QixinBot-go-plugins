@@ -991,6 +991,8 @@ async function runJob(job) {
   const announce = async (name, id) => {
     if (job.announced) return
     await sendTitleWithCover(name, id)
+    // 别紧贴着封面消息刷出来：隔 1.5 秒，看起来像"看完封面再开始干活"
+    await new Promise((resolve) => setTimeout(resolve, 1500))
     await say('少女祈祷中...')
     job.announced = true
     const task = activeTasks.get(albumId)

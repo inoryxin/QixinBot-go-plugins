@@ -111,7 +111,26 @@ function now() {
   return Math.floor(Date.now() / 1000)
 }
 
+/** 当前会话是不是开着贴吧鱼模式（ai-persona 提供 persona.mode；没装就当没开）。 */
+async function inTiebaMode(session) {
+  try {
+    const r = await host.capability('persona.mode', {
+      chat_type: session.chat_type,
+      chat_id: session.chat_id,
+    })
+    return Boolean(r?.ok && r.data?.tieba)
+  } catch {
+    return false
+  }
+}
+
 async function remember(session, role, content) {
+  // 贴吧鱼模式开着时整段不进记忆：那种嘴臭台词存下来，
+  // 切回正常人设后模型会照着上一轮的语气接，容易出事。
+  if (await inTiebaMode(session)) {
+    host.log('debug', `贴吧鱼模式：跳过记忆写入（${role}）`)
+    return
+  }
   const uid = role === 'user' ? session.user_id : session.self_id || 0
   await db('exec',
     `INSERT INTO ai_message (chat_type, chat_id, user_id, role, content, ts)

@@ -367,6 +367,11 @@ serve({
         return { ok: false, error: e.message }
       }
     }
+    if (name === 'persona.mode') {
+      // 给 ai-chat 用：贴吧鱼模式开着时，记忆不该记这一段（切回来会串味）
+      const key = `${args?.chat_type === 'private' ? 'private' : 'group'}:${args?.chat_id ?? 0}`
+      return { ok: true, data: { tieba: Boolean(tieba?.isOn(key)), enabled: settings.tieba_enabled !== false } }
+    }
     if (name === 'tieba_add') {
       try {
         return { ok: true, data: { text: tieba.add(args || {}) } }
