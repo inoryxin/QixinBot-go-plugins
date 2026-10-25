@@ -580,6 +580,9 @@ default = "celsius"
 `{status, content_type, body(base64)}`。POST 受 CSRF 保护；框架会在页面 `<head>`
 里自动包装 `fetch` 加 `X-CSRF-Token`，面板脚本不用自己处理。
 
+**请求体上限 8MiB**：超过会直接返回 413。代理会把 body base64 后塞进 JSON-RPC，
+而 RPC 单行上限是 16MiB；大文件请分片，或让面板调插件自己的上传接口。
+
 ## 3.3 控件类型
 
 | type | 渲染 | 存的值 |
