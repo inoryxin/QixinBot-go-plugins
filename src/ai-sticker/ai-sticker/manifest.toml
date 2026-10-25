@@ -8,7 +8,7 @@ description = "给 AI 聊天配表情包：情绪/场景标签、后台上传、
 # 偷图由 ai-chat 在主对话调用里顺手完成，这里不需要观察消息
 observe = false
 
-provides = ["sticker.pick@1", "sticker.add@1"]
+provides = ["sticker.pick@1", "sticker.add@1", "sticker.learn@1"]
 
 [[capability]]
 name = "sticker.pick"
@@ -28,6 +28,19 @@ type = "string"
 
 [capability.parameters.properties.chat_id]
 type = "number"
+
+[[capability]]
+name = "sticker.learn"
+
+[capability.parameters]
+type = "object"
+required = ["data_url"]
+
+[capability.parameters.properties.data_url]
+type = "string"
+
+[capability.parameters.properties.source]
+type = "string"
 
 [[capability]]
 name = "sticker.add"

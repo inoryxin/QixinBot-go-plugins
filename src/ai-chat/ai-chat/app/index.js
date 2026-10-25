@@ -10,6 +10,7 @@
 import { serve, host, chatOf } from '../_sdk/qixin.mjs'
 
 let settings = {}
+let visionSupported = false
 
 const lastTrigger = new Map()
 
@@ -976,7 +977,7 @@ async function buildMessages(session, userText, extraPrompt, images) {
     }
   }
 
-  if (images && images.length) {
+  if (visionSupported && images && images.length) {
     messages.push({ role: 'system', content: '这条消息带图片。你回复用户之后，必须另起一行输出表情包标签：如果图是表情包/梗图，输出 <<STICKER:情绪|场景1,场景2>>（情绪从 开心/难过/生气/害羞/无语/惊讶/安慰/期待/困/晚安/吃饭/摸鱼 里选一个，场景最多两个，从 打招呼/安慰/夸赞/吐槽/晚安/吃饭/摸鱼/撒娇 里选）；不是表情包就输出 <<STICKER:none>>。这一行只给后台，绝对不要向用户解释。' })
   }
 
@@ -1431,7 +1432,11 @@ async function respond(session, userText, extraPrompt, images) {
 serve({
   async initialize({ settings: initial }) {
     settings = initial || {}
-    host.log('info', `AI 聊天启动，模式=${settings.trigger_mode || 'mention'}`)
+    try {
+      const info = await host.capability('llm.info', {})
+      visionSupported = info?.data?.vision === true
+    } catch {}
+    host.log('info', `AI 聊天启动（vision=${visionSupported}），模式=${settings.trigger_mode || 'mention'}`)
     return { api_version: '1.0' }
   },
 
@@ -1482,12 +1487,38 @@ serve({
       return { handled: true }
     }
 
+    // 纯图片群消息：不水群、不回复，但可以按偷图概率静默收藏
+    if (session.chat_type === 'group' && !session.mentioned && !text) {
+      const imgs = imageURLsOf(session)
+      if (imgs.length) {
+        const allow = String(settings.water_groups || '')
+          .split(/[,，|\s]+/).map((x) => x.trim()).filter(Boolean).map(Number)
+        if (!allow.length || allow.includes(Number(session.chat_id))) {
+          const pct = Math.max(0, Math.min(100, Number(settings.steal_image_pct ?? 30)))
+          if (pct > 0 && Math.random() * 100 < pct) {
+            for (const u of imgs.slice(0, 2)) {
+              toDataURL(u).then((d) => host.capability('sticker.learn', { data_url: d, source: 'water' })).catch(() => {})
+            }
+            host.log('info', `纯图静默偷表情包 p=${pct}%`)
+          }
+        }
+        return { handled: false }
+      }
+    }
+
     const trig = shouldTrigger(session)
     host.log('info', 'H4 shouldTrigger=' + trig)
     if (!trig) return { handled: false }
 
     const cleaned = text.replace(/^@\S+\s*/, '').trim() || text
     const images = imageURLsOf(session)
+    // 没有视觉模型时：私聊/水群带图先存"待分类"，不浪费视觉调用
+    if (!visionSupported && images.length &&
+        (session.chat_type === 'private' || !session.mentioned)) {
+      for (const u of images.slice(0, 2)) {
+        toDataURL(u).then((d) => host.capability('sticker.learn', { data_url: d, source: 'water' })).catch(() => {})
+      }
+    }
     lastTrigger.set(session.chat_type + ':' + session.chat_id, Date.now())
     host.log('info', 'H5 进入 respond images=' + images.length)
 

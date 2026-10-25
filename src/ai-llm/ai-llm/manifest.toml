@@ -1,0 +1,64 @@
+id = "ai-llm"
+name = "LLM 服务"
+version = "1.0.0"
+apiVersion = "1.x"
+exec = ["node", "app/index.js"]
+description = "统一的 LLM 调用入口。其他插件通过能力调用，不各自配 key"
+
+# 服务插件：不接消息，只提供能力
+kind = "service"
+
+provides = ["llm.chat@1", "llm.info@1"]
+
+load_order = -10   # 基础服务，先起来
+[[capability]]
+name = "llm.chat"
+
+[capability.parameters]
+type = "object"
+required = ["messages"]
+
+[capability.parameters.properties.messages]
+type = "array"
+
+[capability.parameters.properties.model]
+type = "string"
+
+[capability.parameters.properties.temperature]
+type = "number"
+
+[capability.parameters.properties.tools]
+type = "array"
+
+[[settings]]
+key = "base_url"
+label = "API 地址"
+type = "string"
+default = "https://api.openai.com/v1"
+
+[[settings]]
+key = "api_key"
+label = "API Key"
+type = "password"
+default = ""
+
+[[settings]]
+key = "vision"
+label = "模型支持图片输入（vision）"
+type = "bool"
+default = false
+hint = "DeepSeek 文本模型不支持；换 gpt-4o / qwen-vl 等再打开"
+
+[[settings]]
+key = "model"
+label = "默认模型"
+type = "string"
+default = "gpt-4o-mini"
+
+[[settings]]
+key = "timeout"
+label = "超时（秒）"
+type = "number"
+default = 30
+min = 1
+max = 300

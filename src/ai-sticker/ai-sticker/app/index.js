@@ -2,6 +2,7 @@ import { serve, host } from '../_sdk/qixin.mjs'
 import crypto from 'node:crypto'
 
 let settings = {}
+let visionSupported = false
 const INDEX_KEY = 'sticker:index'
 const HASH_KEY = 'sticker:hashes'
 const MAX_BYTES = 3 * 1024 * 1024
@@ -147,8 +148,14 @@ async function remoteAdd({ dataUrl, emotion, contexts }) {
   return true
 }
 
-// 远程优先，失败回退本地
-async function addSticker({ dataUrl, emotion, contexts, source }) {
+// 远程优先，失败回退本地（串行化，避免并发学习同一张图重复入库）
+let addChain = Promise.resolve()
+function addSticker(args) {
+  const run = addChain.then(() => addStickerInner(args))
+  addChain = run.catch(() => {})
+  return run
+}
+async function addStickerInner({ dataUrl, emotion, contexts, source }) {
   emotion = String(emotion || '开心').trim() || '开心'
   contexts = (contexts || []).map((x) => String(x).trim()).filter(Boolean)
   const hash = hashOf(dataUrl)
@@ -213,8 +220,12 @@ async function classifyImage(dataUrl) {
     }],
     temperature: 0,
   })
-  if (!r || r.ok === false) return null
+  if (!r || r.ok === false) {
+    host.log('debug', `表情识别失败: ${r?.error || '无返回'}`)
+    return null
+  }
   let text = typeof r.text === 'string' ? r.text : ''
+  host.log('debug', `表情识别原始: ${text.slice(0, 160)}`)
   const m = /\{[\s\S]*\}/.exec(text)
   if (!m) return null
   try {
@@ -244,6 +255,10 @@ async function imageDataURL(seg) {
 serve({
   async initialize({ settings: s }) {
     settings = s || {}
+    try {
+      const info = await host.capability('llm.info', {})
+      visionSupported = info?.data?.vision === true
+    } catch {}
     host.log('info', `表情包插件启动，本地 ${(await loadIndex()).length} 张，远程 ${remoteOn() ? '开' : '关'}`)
     return { api_version: '1.0' }
   },
@@ -333,6 +348,17 @@ serve({
 
   async call_tool({ name, args }) {
     if (name === 'sticker.pick') return await pickSticker(args || {})
+    if (name === 'sticker.learn') {
+      const dataUrl = args?.data_url
+      if (!dataUrl) return { ok: false, error: '缺少 data_url' }
+      // 当前模型不支持图片输入时，先存"待分类"，别丢图也不浪费视觉调用
+      let tags = null
+      if (visionSupported) tags = await classifyImage(dataUrl)
+      if (!tags) tags = { emotion: '待分类', contexts: ['待分类'] }
+      const r = await addSticker({ dataUrl, emotion: tags.emotion, contexts: tags.contexts, source: args?.source || 'water' })
+      if (r.ok && !r.duplicate) host.log('info', `静默收藏表情包 ${tags.emotion}`)
+      return { ok: true, learned: !r.duplicate, remote: !!r.remote }
+    }
     if (name === 'sticker.add') return await addSticker({
       dataUrl: args?.data_url, emotion: args?.emotion, contexts: args?.contexts, source: args?.source,
     })
