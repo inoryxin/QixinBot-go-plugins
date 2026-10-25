@@ -1489,9 +1489,11 @@ serve({
 
     // 纯图片群消息：不水群、不回复，但可以按偷图概率静默收藏
     // 有些协议端会把纯图消息的 text 填成 "[图片]" / "[动画表情]"，不能只看 text 是否为空
-    const onlyImageText = /^[\s\[【（(]*(图片|动画表情|表情包|表情|image|pic)[\s\]】）)]*$/i.test(text)
-    if (session.chat_type === 'group' && !session.mentioned && (!text || onlyImageText)) {
-      const imgs = imageURLsOf(session)
+    // 群聊里任何带图的普通消息都不参与随机水群（不回复）；
+    // 被 @ 的图仍然回。纯图消息顺手按概率偷图。
+    const imgsInMsg = imageURLsOf(session)
+    if (session.chat_type === 'group' && !session.mentioned && imgsInMsg.length) {
+      const imgs = imgsInMsg
       if (imgs.length) {
         const allow = String(settings.water_groups || '')
           .split(/[,，|\s]+/).map((x) => x.trim()).filter(Boolean).map(Number)
