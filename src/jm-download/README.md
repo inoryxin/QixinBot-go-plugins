@@ -186,7 +186,7 @@ node app/selftest.mjs
 
 ### 本地测试的两个已知限制
 
-1. **mock-onebot 的 WebSocket 读上限是 32 KB**：往会话里发图片（base64 后更大）
+1. **mock-onebot 的 WebSocket 读上限已提到 16 MB**：普通信息图/图片可以发了。
    会把连接顶掉，报 `StatusMessageTooBig`。真协议端没有这个限制，所以
    「信息卡/信息图发不出去」在 dev 环境里是正常现象；看渲染效果请直接打开
    `data/album-card.jpg`。
