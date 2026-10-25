@@ -1085,9 +1085,6 @@ function shouldTrigger(session) {
     .split(/[,，|\s]+/).map((x) => x.trim()).filter(Boolean).map(Number)
   if (allow.length && !allow.includes(Number(session.chat_id))) return false
 
-  // 纯图片消息不参与随机水群（被 @ 时仍然回）
-  if (!text) return false
-
   const key = session.chat_type + ':' + session.chat_id
   const cd = Math.max(0, Number(settings.cooldown) || 0) * 1000
   if (cd > 0 && lastTrigger.has(key) && Date.now() - lastTrigger.get(key) < cd) return false
@@ -1489,27 +1486,6 @@ serve({
 
     // 纯图片群消息：不水群、不回复，但可以按偷图概率静默收藏
     // 有些协议端会把纯图消息的 text 填成 "[图片]" / "[动画表情]"，不能只看 text 是否为空
-    // 群聊里任何带图的普通消息都不参与随机水群（不回复）；
-    // 被 @ 的图仍然回。纯图消息顺手按概率偷图。
-    const imgsInMsg = imageURLsOf(session)
-    if (session.chat_type === 'group' && !session.mentioned && imgsInMsg.length) {
-      const imgs = imgsInMsg
-      if (imgs.length) {
-        const allow = String(settings.water_groups || '')
-          .split(/[,，|\s]+/).map((x) => x.trim()).filter(Boolean).map(Number)
-        if (!allow.length || allow.includes(Number(session.chat_id))) {
-          const pct = Math.max(0, Math.min(100, Number(settings.steal_image_pct ?? 30)))
-          if (pct > 0 && Math.random() * 100 < pct) {
-            for (const u of imgs.slice(0, 2)) {
-              toDataURL(u).then((d) => host.capability('sticker.learn', { data_url: d, source: 'water' })).catch(() => {})
-            }
-            host.log('info', `纯图静默偷表情包 p=${pct}%`)
-          }
-        }
-        return { handled: false }
-      }
-    }
-
     const trig = shouldTrigger(session)
     host.log('info', 'H4 shouldTrigger=' + trig)
     if (!trig) return { handled: false }
