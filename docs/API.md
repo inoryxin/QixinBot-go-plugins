@@ -32,7 +32,8 @@ apiVersion = "2.x"   # 主版本 2 的框架才会加载
 
 | 类别 | 稳定性 | 说明 |
 |---|---|---|
-| `plugin.initialize` / `handle_message` / `handle_event` / `run_task` / `call_tool` / `get_settings` / `set_settings` / `shutdown` | **稳定** | 签名不会变，只会加可选参数 |
+| `plugin.initialize` / `handle_message` / `handle_event` / `call_tool` / `get_settings` / `set_settings` / `shutdown` | **稳定** | 签名不会变，只会加可选参数 |
+| `plugin.run_task` | 开发线 | 发行版不注册 `[[schedule]]`，不会调用 |
 | `host.reply` / `send_message` / `call_capability` / `call_tool` / `storage_*` / `shared_*` / `log` | **稳定** | 同上 |
 | manifest 的 `id` / `name` / `version` / `apiVersion` / `exec` / `[[commands]]` / `[[settings]]` / `[[tools]]` / `[[requires]]` / `[runtime]` / `[access]` | **稳定** | 只会加新字段，不改语义 |
 | 消息段格式（`{type, data}`） | **稳定** | OneBot 11 的标准，不会动 |
@@ -44,6 +45,10 @@ apiVersion = "2.x"   # 主版本 2 的框架才会加载
 | 东西 | 风险 |
 |---|---|
 | 日志格式 | 随时改进，插件别解析自己的 `host.log` 输出 |
+| `POST /api/chat/inject` 的 `image` 参数 | 传 http(s) 图片地址，可以只发图（text 留空） |
+| `POST /api/idle/toggle` (enabled) | **仅开发线**；发行版返回 404。闲置回收总开关，写 data/idle-switch.json |
+| `POST /api/idle` (plugin, minutes) | **仅开发线**；发行版返回 404。设置闲置回收时长，0 = 不回收；写 data/idle.json |
+| `POST /api/runtime` (kind=node\|python, path) | 指定解释器绝对路径；留空恢复自动探测；写 data/runtime.json |
 | `plugin.observe_message` | 声明 `observe = true` 后，每条消息都会抄一份；返回值忽略 |
 | `GET /api/trusted-keys` | 返回 `{keys:[{key,fingerprint,source}], allow_unsigned}`；`source` = `official` / `config` / `added` |
 | `POST /api/trusted-keys` | 表单 `key=`，立刻生效（落盘 `data/trusted-keys.json`） |
@@ -242,9 +247,9 @@ value = "llm"
 
 宿主保存设置后会推 `set_settings`，插件更新内存里的值即可。
 
-### 2.6b `plugin.run_task`
+### 2.6b `plugin.run_task`（仅开发线）
 
-宿主按 `[[schedule]]` 定时调用。
+开发线宿主按 `[[schedule]]` 定时调用；发行版不注册调度，不会调用。
 
 ```json
 // 参数
@@ -583,11 +588,11 @@ my-plugin   生成日报    group:123456    15:04:05   运行中
 **限制**：
 
 - **不活过重启**：插件进程死了，后台任务也一起没了
-- **要跨重启的任务用 `[[schedule]]`**
+- **要跨重启的任务：把进度/上次时间存 `host.storage`**，启动时续跑（发行版）
 - **插件卸载时**记录被清掉（任务随进程消失）
 
 **这是有意的**：后台任务活在插件进程里，进程没了任务就该没。
-真正需要持久化的任务（每天推日报、定时检查订阅）该用 `[[schedule]]` + `plugin.run_task`。
+真正需要持久化的任务（每天推日报、定时检查订阅）在发行版里用插件内 `setInterval`/`setTimeout`，并把上次执行时间存 `host.storage`；开发线才用 `[[schedule]]` + `run_task`。
 
 ### 5.3a `host.ask`：等用户下一条消息
 

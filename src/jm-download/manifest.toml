@@ -1,0 +1,359 @@
+id = "jm-download"
+name = "禁漫下载"
+version = "1.0.0"
+apiVersion = "1.x"
+exec = ["node", "app/index.js"]
+description = "群友发漫画 ID 就后台下载整本、还原竖切、合成 PDF、打包上传；附今日JM/更新JM 信息图、按群开关"
+permissions = ["onebot.write"]
+use_tools = true
+concurrency = "session"
+
+# 用户平时直接发 jm123456 / 漫画链接，不带命令前缀，所以门禁不能强制前缀。
+[access]
+require_prefix = false
+require_mention = false
+
+[[commands]]
+id = "jm.download"
+usage = "jm [id]"
+description = "下载整本漫画（也可直接发 jm123456 或 /album/123456 链接）"
+
+[[commands]]
+id = "jm.pause"
+usage = "暂停下载 [id]"
+description = "暂停排队中或下载中的任务"
+
+[[commands]]
+id = "jm.resume"
+usage = "继续下载 [id]"
+description = "恢复被暂停的任务"
+
+[[commands]]
+id = "jm.delete"
+usage = "删除JM [id]"
+description = "删除任务、本地文件与已上传的群文件"
+
+[[commands]]
+id = "jm.today"
+usage = "今日JM"
+aliases = ["JM列表", "今日本子"]
+description = "用信息图列出本地书架"
+
+[[commands]]
+id = "jm.updates"
+usage = "更新JM"
+aliases = ["今日更新", "JM更新"]
+description = "站点当日新上架/新章节（每 30 分钟自动采集）"
+
+[[commands]]
+id = "jm.status"
+usage = "下好了吗"
+aliases = ["下载进度"]
+description = "查下载进度与最近的处理记录"
+
+[[commands]]
+id = "jm.library"
+usage = "本地收藏"
+aliases = ["本地漫画"]
+description = "列出本地已下载的漫画"
+
+[[commands]]
+id = "jm.env"
+usage = "支持PDF吗"
+aliases = ["存储状态"]
+description = "查看环境能力（Pillow/PDF）、磁盘占用与群文件配额"
+
+[[commands]]
+id = "jm.group_on"
+usage = "开启JM"
+description = "在本群开启 JM（群主/管理员）"
+
+[[commands]]
+id = "jm.group_off"
+usage = "关闭JM"
+description = "在本群关闭 JM（群主/管理员）"
+
+[[commands]]
+id = "jm.group_list"
+usage = "JM群列表"
+description = "查看已开启 JM 的群"
+
+[[commands]]
+id = "jm.group_all"
+usage = "JM所有群开放"
+description = "恢复所有群可用（取消白名单）"
+
+# ── 设置（顺序 = 设置页显示顺序）────────────────────────────────────────────
+
+[[settings]]
+key = "enabled"
+label = "启用下载功能"
+type = "boolean"
+default = true
+hint = "关掉后下载/进度/收藏/自检都不可用，但今日JM与群开关仍可查看"
+
+[[settings]]
+key = "outputFormat"
+label = "输出格式"
+type = "select"
+options = ["pdf", "images"]
+option_labels = ["合成 PDF（推荐）", "只保留原图"]
+default = "pdf"
+hint = "images = 只存原图、零依赖、不上传 PDF"
+
+[[settings]]
+key = "restore"
+label = "还原竖切打乱"
+type = "boolean"
+default = true
+hint = "需要 Python + Pillow；关掉最快，但新本子的图是乱的"
+
+[[settings]]
+key = "deleteImagesAfterPdf"
+label = "合成 PDF 后删除原图"
+type = "boolean"
+default = false
+hint = "省磁盘；PDF 失败时会自动保留原图"
+
+[[settings]]
+key = "pdfQuality"
+label = "PDF 画质（30-95）"
+type = "number"
+default = 85
+min = 30
+max = 95
+hint = "嵌入 JPEG 的质量，调低可显著减小体积"
+
+[[settings]]
+key = "pdfMaxDim"
+label = "PDF 单页最长边（像素，0=原尺寸）"
+type = "number"
+default = 0
+min = 0
+max = 6000
+hint = "例如填 1600 可缩小体积"
+
+[[settings]]
+key = "zipEnabled"
+label = "0. 是否生成压缩包"
+type = "boolean"
+default = true
+hint = "开：PDF 合成后打成 .zip 再上传；关：直接传 PDF"
+
+[[settings]]
+key = "zipPasswordEnabled"
+label = "1. 是否给压缩包设置密码"
+type = "boolean"
+default = false
+hint = "ZipCrypto 传统加密，Windows 双击即可输密码解压"
+
+[[settings]]
+key = "zipPassword"
+label = "2. 解压密码"
+type = "string"
+default = ""
+hint = "建议字母数字；中文密码在 Windows 自带解压里可能报错"
+
+[[settings]]
+key = "zipPasswordInName"
+label = "3. 密码同步到压缩包文件名"
+type = "boolean"
+default = true
+hint = "开 = JM123456-密码：abc123.zip；关 = JM123456.zip"
+
+[[settings]]
+key = "uploadMode"
+label = "文件上传到哪"
+type = "select"
+options = ["request", "group", "private", "off"]
+option_labels = ["提出请求的会话", "只传群", "只传私聊", "不上传"]
+default = "request"
+
+[[settings]]
+key = "maxUploadMB"
+label = "单文件上传上限（MB）"
+type = "number"
+default = 600
+min = 1
+max = 4096
+hint = "超限时按设置分卷或拒绝；压缩包超限会整包试一次，不切分"
+
+[[settings]]
+key = "rejectOversize"
+label = "超限时直接拒绝（不分卷）"
+type = "boolean"
+default = false
+
+[[settings]]
+key = "checkQuota"
+label = "上传前检查群文件配额"
+type = "boolean"
+default = true
+hint = "查配额需要插件额外申请 onebot.admin 权限；没申请时自动跳过预检"
+
+[[settings]]
+key = "allowIds"
+label = "允许触发的 QQ（留空=所有人）"
+type = "string"
+default = ""
+hint = "逗号分隔；填了则只有管理员/群主和名单里的 QQ 能触发下载"
+
+[[settings]]
+key = "keepHours"
+label = "成品缓存时长（小时）"
+type = "number"
+default = 12
+min = 0
+max = 8760
+hint = "同一 ID 在这段时间内重复请求，直接重发 PDF，不重新下载；0=关闭"
+
+[[settings]]
+key = "localReuseDays"
+label = "本地成品复用天数"
+type = "number"
+default = 30
+min = 0
+max = 3650
+hint = "本地已有这本（PDF 或原图）就直接发；0=关闭"
+
+[[settings]]
+key = "keepDays"
+label = "本地文件保留天数"
+type = "number"
+default = 7
+min = 0
+max = 365
+hint = "每 6 小时检查一次；0=永不清理"
+
+[[settings]]
+key = "groupFileKeepDays"
+label = "群文件保留天数（到期自动删）"
+type = "number"
+default = 0
+min = 0
+max = 365
+hint = "0=不删；删除群文件需要 onebot.admin 权限"
+
+[[settings]]
+key = "maxPages"
+label = "每话最多下载多少页"
+type = "number"
+default = 500
+min = 1
+max = 5000
+hint = "超出部分跳过并在结果里说明"
+
+[[settings]]
+key = "multiChapter"
+label = "多章节本子下载全部章节"
+type = "boolean"
+default = true
+hint = "关掉只下第一话"
+
+[[settings]]
+key = "concurrency"
+label = "同时下载几张图"
+type = "number"
+default = 4
+min = 1
+max = 8
+
+[[settings]]
+key = "timeoutSeconds"
+label = "单次请求超时（秒）"
+type = "number"
+default = 30
+min = 5
+max = 300
+
+[[settings]]
+key = "progress"
+label = "在群里报进度"
+type = "boolean"
+default = true
+
+[[settings]]
+key = "translateTitles"
+label = "把日文标题翻译成中文"
+type = "boolean"
+default = true
+hint = "走 llm.chat 能力；没配 LLM 时自动只做繁→简"
+
+[[settings]]
+key = "translateModel"
+label = "翻译用的模型（留空=llm 默认）"
+type = "string"
+default = ""
+
+[[settings]]
+key = "pythonPath"
+label = "Python 解释器路径（留空自动探测）"
+type = "string"
+default = ""
+
+[[settings]]
+key = "proxy"
+label = "下载走代理（留空=直连）"
+type = "string"
+default = ""
+hint = "例如 http://127.0.0.1:7890；需要运行环境里有 undici"
+
+[[settings]]
+key = "domains"
+label = "备用站点域名（可留空）"
+type = "string"
+default = ""
+hint = "一行/逗号一个，例如 18comic.vip；填了优先用"
+
+[[settings]]
+key = "downloadDir"
+label = "下载目录（留空=插件 data/ 下）"
+type = "string"
+default = ""
+hint = "填绝对路径，例如 D:\\Comic"
+
+# ── 给 AI 用的工具 ──────────────────────────────────────────────────────────
+
+[[tools]]
+name = "jm_download"
+description = "把一本禁漫天堂（JMComic）漫画按 ID 下载到机器人本地，并（按设置）还原竖切、合成 PDF、打包上传到提出请求的会话。群友发来漫画 ID（如 123456、jm123456）或 album 链接并明确想下载时调用。参数 album_id 传纯数字 ID，不要自己编。异步队列：调用后立刻返回，不要因为没看到结果就重复调用同一个 ID。"
+parameters = { type = "object", properties = { album_id = { type = "string", description = "禁漫漫画 ID，纯数字，例如 123456" } }, required = ["album_id"] }
+
+[[tools]]
+name = "jm_control"
+description = "控制一个禁漫下载任务：pause 暂停、resume 继续、delete 删除（同时清理本地文件与已上传的群文件）。群友说「暂停下载 JM123」「继续下载 JM123」「删除JM123」时调用。结果由工具自己发到会话，不要复述。"
+parameters = { type = "object", properties = { action = { type = "string", enum = ["pause", "resume", "delete"], description = "pause / resume / delete" }, album_id = { type = "string", description = "禁漫漫画 ID，纯数字" } }, required = ["action", "album_id"] }
+
+[[tools]]
+name = "jm_task_status"
+description = "查询禁漫下载的排队/进行中任务，以及最近的处理记录（成功/失败原因）。群友问「下好了吗」「怎么没动静」「为什么失败」时调用。"
+parameters = { type = "object", properties = {} }
+
+[[tools]]
+name = "jm_today_list"
+description = "把机器人本地已下载的禁漫漫画做成封面网格信息图发到会话。群友说「今日JM」「JM列表」「本地有哪些漫画」时调用。内容由工具直接发出，不要复述。"
+parameters = { type = "object", properties = {} }
+
+[[tools]]
+name = "jm_daily_updates"
+description = "把禁漫站点当日新上架/新章节做成信息图发到会话。群友说「更新JM」「今日更新」「日更」时调用。内容由工具直接发出，不要复述。"
+parameters = { type = "object", properties = {} }
+
+[[tools]]
+name = "jm_group_toggle"
+description = "按群开启/关闭 JM 功能，或查看已开启的群。有人说「开启JM」「关闭JM」「JM群列表」「JM所有群开放」时调用。结果由工具自己发到会话。"
+parameters = { type = "object", properties = { action = { type = "string", enum = ["on", "off", "list", "all"], description = "on / off / list / all" } }, required = ["action"] }
+
+[[tools]]
+name = "jm_library"
+description = "列出机器人本地已下载的禁漫漫画（ID、名称、页数、时间）。群友问「本地有哪几本」「收藏里有没有 xxx」时调用。"
+parameters = { type = "object", properties = {} }
+
+[[tools]]
+name = "jm_storage"
+description = "查看禁漫下载的环境状态：下载目录占用、是否具备还原/PDF 能力（Python+Pillow）、输出/上传设置、本群群文件配额。群友问「支持 PDF 吗」「磁盘满了吗」「群文件还有空间吗」时调用。"
+parameters = { type = "object", properties = {} }
+
+[runtime]
+kind = "node"
+version = ">=18"
