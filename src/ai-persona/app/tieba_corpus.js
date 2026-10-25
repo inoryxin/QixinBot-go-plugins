@@ -1,4 +1,4 @@
-// 贴吧语料种子（只读模板；首次启动时复制到 data/plugin-data/tieba-mouth/corpus.json，
+// 贴吧语料种子（只读模板；首次启动时复制到插件 data 目录的 tieba-corpus.json，
 // 之后的增删只动 data 里的副本 —— 绝不写 plugins 目录，否则 fs.watch 会全量重扫）。
 //
 // 字段：
