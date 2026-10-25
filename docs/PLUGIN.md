@@ -1315,20 +1315,23 @@ runtime-python-linux-x64.anzu
 运行时包也是 `.anzu`，用 `kind = "runtime"` 区分：
 
 ```toml
-id = "node-24.18.0-windows-x64"
-name = "Node.js 24.18.0"
-version = "24.18.0"
+id = "node-24.20.0-windows-x64"
+name = "Node.js 24.20.0"
+version = "24.20.0"
 kind = "runtime"
 exec = ["node.exe"]
 
 [runtime]
 kind = "node"          # node / python
-version = "24.18.0"
+version = "24.20.0"
 platform = "windows-x64"
 ```
 
-包里放 `node.exe`、`node_modules/` 或 `python.exe`、`Lib/`、共享依赖等。
+包里放 `node.exe`、`node_modules/`、`fonts/`，或 `python.exe`、`Lib/site-packages/`、`fonts/`。
+框架会把运行时自己的 `node_modules/` 加进 `NODE_PATH`，运行时自己的字体也会注册。
 
+> **已打包 Windows 运行时**：`runtime-node-windows-x64.anzu`（Node 24.20.0）、`runtime-python-windows-x64.anzu`（Python 3.12.10），都带共享依赖和字体。
+>
 > **下载按钮只下载我们发布的 `runtime-*.anzu`**，里面已经带共享依赖和字体；
 > 不会去 nodejs.org / python.org 下裸解释器。裸包装完还得再联网装依赖，离线不可用，
 > 也不符合"装完就能跑"的目标。
