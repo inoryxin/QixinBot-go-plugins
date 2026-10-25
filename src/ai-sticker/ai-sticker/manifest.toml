@@ -5,10 +5,10 @@ apiVersion = "1.x"
 exec = ["node", "app/index.js"]
 description = "给 AI 聊天配表情包：情绪/场景标签、后台上传、远程表情库接管、自动偷表情包"
 
-# 要观察消息里的图片才能偷表情包
-observe = true
+# 偷图由 ai-chat 在主对话调用里顺手完成，这里不需要观察消息
+observe = false
 
-provides = ["sticker.pick@1", "sticker.add@1", "sticker.learn@1"]
+provides = ["sticker.pick@1", "sticker.add@1"]
 
 [[capability]]
 name = "sticker.pick"
@@ -30,19 +30,6 @@ type = "string"
 type = "number"
 
 [[capability]]
-name = "sticker.learn"
-
-[capability.parameters]
-type = "object"
-required = ["data_url"]
-
-[capability.parameters.properties.data_url]
-type = "string"
-
-[capability.parameters.properties.source]
-type = "string"
-
-[[capability]]
 name = "sticker.add"
 
 [capability.parameters]
@@ -61,12 +48,6 @@ items = { type = "string" }
 
 [capability.parameters.properties.source]
 type = "string"
-
-[[settings]]
-key = "steal_private"
-label = "私聊自动收藏表情包"
-type = "bool"
-default = true
 
 [[settings]]
 key = "remote_enabled"

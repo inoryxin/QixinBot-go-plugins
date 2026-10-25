@@ -183,32 +183,6 @@ serve({
     return { handled: true }
   },
 
-  // 偷表情包：私聊全收，群聊按概率；远程库优先，失败存本地
-  async observe_message({ session }) {
-    try {
-      const imgs = (session.segments || []).filter((s) => s.type === 'image')
-      if (!imgs.length) return {}
-      // 群聊不在这里掷骰子：只有 ai-chat 决定"水群"这条消息时才通过
-      // sticker.learn 把图交过来；这里只处理私聊（每条都学）。
-      if (session.chat_type !== 'private') return {}
-      if (settings.steal_private === false) return {}
-
-      for (const seg of imgs.slice(0, 2)) {
-        const dataUrl = await imageDataURL(seg)
-        if (!dataUrl) continue
-        const tags = await classifyImage(dataUrl)
-        if (!tags) continue
-        const r = await addSticker({ dataUrl, emotion: tags.emotion, contexts: tags.contexts, source: 'steal' })
-        if (r.ok && !r.duplicate) {
-          host.log('info', `收藏表情包 ${tags.emotion} ${tags.contexts.join('/')} ${r.remote ? '→远程' : '→本地'}`)
-        }
-      }
-    } catch (e) {
-      host.log('debug', `偷表情包失败: ${e.message}`)
-    }
-    return {}
-  },
-
   async http({ method, path, query, body, content_type }) {
     const u = new URL('http://x' + (path || '/') + (query ? '?' + query : ''))
     const p = u.pathname
@@ -277,16 +251,6 @@ serve({
 
   async call_tool({ name, args }) {
     if (name === 'sticker.pick') return await pickSticker(args || {})
-    if (name === 'sticker.learn') {
-      const dataUrl = args?.data_url
-      if (!dataUrl) return { ok: false, error: '缺少 data_url' }
-      host.log('debug', '收到水群表情学习请求')
-      const tags = await classifyImage(dataUrl)
-      if (!tags) return { ok: true, learned: false }
-      const r = await addSticker({ dataUrl, emotion: tags.emotion, contexts: tags.contexts, source: args?.source || 'water' })
-      if (r.ok && !r.duplicate) host.log('info', `水群收藏表情包 ${tags.emotion}`)
-      return { ok: true, learned: !r.duplicate, remote: !!r.remote }
-    }
     if (name === 'sticker.add') return await addSticker({
       dataUrl: args?.data_url, emotion: args?.emotion, contexts: args?.contexts, source: args?.source,
     })

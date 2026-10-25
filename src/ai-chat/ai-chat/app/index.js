@@ -976,6 +976,10 @@ async function buildMessages(session, userText, extraPrompt, images) {
     }
   }
 
+  if (images && images.length) {
+    messages.push({ role: 'system', content: '这条消息带图片。你回复用户之后，必须另起一行输出表情包标签：如果图是表情包/梗图，输出 <<STICKER:情绪|场景1,场景2>>（情绪从 开心/难过/生气/害羞/无语/惊讶/安慰/期待/困/晚安/吃饭/摸鱼 里选一个，场景最多两个，从 打招呼/安慰/夸赞/吐槽/晚安/吃饭/摸鱼/撒娇 里选）；不是表情包就输出 <<STICKER:none>>。这一行只给后台，绝对不要向用户解释。' })
+  }
+
   // 当前这句：有图就用多模态格式
   if (userText || (images && images.length)) {
     const who = session.nickname || String(session.user_id)
@@ -1382,7 +1386,23 @@ async function respond(session, userText, extraPrompt, images) {
   }
 
   if (!r.text) return { ok: false, error: 'LLM 没有产出文本' }
-  const text = r.text
+  let text = r.text
+  // 主对话那次调用顺手带回的表情标签：剥掉后入库，不额外调视觉模型
+  const tagMatch = /<<STICKER:([^>]+)>>/.exec(text)
+  if (tagMatch) {
+    text = text.replace(tagMatch[0], '').trim()
+    const val = tagMatch[1].trim()
+    if (val && val !== 'none' && images && images.length &&
+        (session.chat_type === 'private' || !session.mentioned)) {
+      const [emotionRaw, ctxRaw = ''] = val.split('|')
+      const emotion = emotionRaw.trim() || '开心'
+      const contexts = ctxRaw.split(/[,，]/).map((x) => x.trim()).filter(Boolean).slice(0, 2)
+      toDataURL(images[0]).then((d) => host.capability('sticker.add', {
+        data_url: d, emotion, contexts,
+        source: session.chat_type === 'private' ? 'private' : 'water',
+      })).then(() => host.log('info', `顺手收藏表情包 ${emotion}`)).catch(() => {})
+    }
+  }
 
   const delay = Math.max(0, Number(settings.reply_typing) || 0)
   if (delay > 0) await new Promise((res) => setTimeout(res, Math.min(delay, 3000)))
@@ -1460,13 +1480,6 @@ serve({
 
     const cleaned = text.replace(/^@\S+\s*/, '').trim() || text
     const images = imageURLsOf(session)
-    // 水群水到这条消息：图交给表情包插件学习（私聊由 ai-sticker 自己收）
-    if (session.chat_type === 'group' && !session.mentioned && images.length) {
-      for (const u of images.slice(0, 2)) {
-        toDataURL(u).then((d) => host.capability('sticker.learn', { data_url: d, source: 'water' }))
-          .catch(() => {})
-      }
-    }
     lastTrigger.set(session.chat_type + ':' + session.chat_id, Date.now())
     host.log('info', 'H5 进入 respond images=' + images.length)
 
