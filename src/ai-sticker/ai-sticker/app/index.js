@@ -3,6 +3,7 @@ import crypto from 'node:crypto'
 
 let settings = {}
 const INDEX_KEY = 'sticker:index'
+const HASH_KEY = 'sticker:hashes'
 const MAX_BYTES = 3 * 1024 * 1024
 
 const EMOTIONS = ['开心', '难过', '生气', '害羞', '无语', '惊讶', '安慰', '期待', '困', '晚安', '吃饭', '摸鱼']
@@ -24,6 +25,17 @@ async function loadIndex() {
   return Array.isArray(v) ? v : []
 }
 async function saveIndex(list) { await host.storage.set(INDEX_KEY, list) }
+async function hashes() {
+  const v = await host.storage.get(HASH_KEY)
+  return Array.isArray(v) ? v : []
+}
+async function rememberHash(hash) {
+  const list = await hashes()
+  if (list.includes(hash)) return
+  list.push(hash)
+  while (list.length > 5000) list.shift()
+  await host.storage.set(HASH_KEY, list)
+}
 
 async function putImage(id, dataUrl) {
   if (Buffer.byteLength(dataUrl) > MAX_BYTES * 1.4) throw new Error('图片太大（>3MB）')
@@ -72,14 +84,34 @@ async function remotePick(emotion, context) {
   const r = await remoteJSON('/api/state')
   if (r.status >= 300 || !r.body) throw new Error('远程库读取失败')
   const imgs = Array.isArray(r.body.images) ? r.body.images : []
-  let pool = imgs
+  let pool = []
   if (emotion) {
     const code = EMO_CODE[emotion]
-    const matched = imgs.filter((i) => (code && i.emotion === code) || (context && (i.usage || []).includes(context)))
-    if (matched.length) pool = matched
+    if (code) pool = imgs.filter((i) => i.emotion === code)
   }
+  // 情绪没匹配上才退到场景，最后才全库随机
+  if (!pool.length && context) pool = imgs.filter((i) => (i.usage || []).includes(context))
+  if (!pool.length) pool = imgs
+  // 优先小图：远程原图可能好几 MB，聊天里没必要
+  const small = pool.filter((i) => Number(i.size) > 0 && Number(i.size) <= 512 * 1024)
+  if (small.length) pool = small
   if (!pool.length) throw new Error('远程库没有匹配的表情')
   const img = pool[Math.floor(Math.random() * pool.length)]
+  const url = remoteBase() + img.url
+  // 远程库在内网，WebUI/协议端不一定能直接访问；取回来转成 data URL 最稳
+  let dataUrl = url
+  try {
+    const resp = await fetch(url, { signal: AbortSignal.timeout(8000) })
+    if (resp.ok) {
+      const buf = Buffer.from(await resp.arrayBuffer())
+      if (buf.length <= 5 * 1024 * 1024) {
+        const ct = resp.headers.get('content-type') || 'image/png'
+        dataUrl = `data:${ct};base64,${buf.toString('base64')}`
+      }
+    }
+  } catch (e) {
+    host.log('debug', `远程图下载失败: ${e.message}`)
+  }
   return {
     ok: true,
     remote: true,
@@ -87,7 +119,7 @@ async function remotePick(emotion, context) {
       id: img.id,
       emotion: CODE_EMO[img.emotion] || emotion,
       contexts: Array.isArray(img.usage) ? img.usage.slice(0, 2) : [],
-      data_url: remoteBase() + img.url,
+      data_url: dataUrl,
     },
   }
 }
@@ -121,11 +153,14 @@ async function addSticker({ dataUrl, emotion, contexts, source }) {
   contexts = (contexts || []).map((x) => String(x).trim()).filter(Boolean)
   const hash = hashOf(dataUrl)
   const list = await loadIndex()
-  if (list.some((s) => s.hash === hash)) return { ok: true, duplicate: true }
+  if (list.some((s) => s.hash === hash) || (await hashes()).includes(hash)) {
+    return { ok: true, duplicate: true }
+  }
 
   if (remoteOn() && remoteBase()) {
     try {
       await remoteAdd({ dataUrl, emotion, contexts })
+      await rememberHash(hash)
       return { ok: true, remote: true }
     } catch (e) {
       host.log('warn', `远程库不可用，回退本地: ${e.message}`)
@@ -136,6 +171,7 @@ async function addSticker({ dataUrl, emotion, contexts, source }) {
   await putImage(id, dataUrl)
   list.push({ id, hash, emotion, contexts, source: source || 'local', added_at: now() })
   await saveIndex(list)
+  await rememberHash(hash)
   return { ok: true, id, local: true }
 }
 
