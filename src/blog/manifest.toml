@@ -1,0 +1,82 @@
+id = "blog"
+name = "博客"
+version = "1.0.0"
+apiVersion = "1.x"
+exec = ["node", "app/index.js"]
+description = "Typecho 一键发博客：连续输入、图片上传、AI 生成、发布并同步 QQ 空间"
+priority = 10
+permissions = ["onebot.dangerous"]
+
+[access]
+require_prefix = false
+require_mention = false
+
+[[commands]]
+id = "blog.start"
+usage = "blog"
+description = "开始一篇博客，下一条消息是标题"
+aliases = ["博客"]
+require_prefix = false
+
+[[settings]]
+key = "enabled"
+label = "启用博客"
+type = "bool"
+default = true
+
+[[settings]]
+key = "baseUrl"
+label = "Typecho 地址"
+type = "string"
+default = "https://home.inory.xin:20806"
+
+[[settings]]
+key = "username"
+label = "Typecho 用户名"
+type = "string"
+default = "anzu"
+
+[[settings]]
+key = "password"
+label = "Typecho 密码"
+type = "password"
+default = ""
+
+[[settings]]
+key = "category"
+label = "默认分类"
+type = "string"
+default = ""
+
+[[settings]]
+key = "uploadToken"
+label = "图片上传 Token"
+type = "password"
+default = "qixin-blog-upload-2026"
+
+[[settings]]
+key = "aiStyle"
+label = "AI 写作风格"
+type = "string"
+default = "自然、简短、像个人博客"
+
+[[settings]]
+key = "ownerQQ"
+label = "允许使用的 QQ"
+type = "string"
+default = "2849446053"
+hint = "留空表示所有人可用"
+
+[[tools]]
+name = "publish_blog"
+description = "发布一篇 Typecho 博客。"
+
+[tools.parameters]
+type = "object"
+required = ["title", "content"]
+
+[tools.parameters.properties.title]
+type = "string"
+
+[tools.parameters.properties.content]
+type = "string"
