@@ -1421,7 +1421,8 @@ platform = "windows-x64"
 - Node 包放 `node.exe`、`node_modules/`、`fonts/`
 - Python 包放 `python.exe`、`Lib/site-packages/`、`fonts/`
 - 上传到「插件」页或「依赖」页都会自动识别，装到 `data/runtimes/<kind>/<version>/<platform>/`
-- 当前平台自动设为运行时；平台不匹配只存不用
+- 当前平台自动设为运行时；**平台不匹配直接拒绝安装**
+- 启动时会自动清理 `data/runtimes` 里非当前平台的运行时和 `.tmp` 残留，列表只留本机能用的
 - 下载按钮只下载我们发布的完整运行时包，不下载 nodejs.org / python.org 裸解释器
 
 当前已打包 4 个：
