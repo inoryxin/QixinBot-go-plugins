@@ -1114,20 +1114,23 @@ WebUI 的 `GET /api/capabilities` 能看到每个能力的提供者列表和顺�
 - [ ] **共享数据先声明**：Node 用 `host.sharedSet`、Python 用 `host.shared_set`，key 必须出现在 `[[shared]]`，
       且写完整名 `<插件id>.<key>`
 - [ ] **设置项 type 别写错**：`bool`/`boolean` 都行，其它只认
-      `string|bool|boolean|number|select|password|path`；写错会退化成文本框并打 warn
+      `string|text|textarea|bool|boolean|number|select|password|path`；写错会退化成文本框并打 warn
 - [ ] **下拉框给中文**：`options` + `option_labels`
 - [ ] **消息要全量看到就开 `observe`**：`last = true` 的兜底插件收不到
       被别的插件认领的消息
 - [ ] **发行版定时自己管**：用 `setInterval` / `setTimeout`；`[[schedule]]` 只在开发线可用
 - [ ] **改插件 id 前先备份 `data/`**：设置和存储都在
-      `data/plugins/<id>/data/`，删插件会连目录一起删（框架会留
-      `.removed-<id>-<时间戳>` 备份，但别指望它）
+      `data/plugins/<id>/data/`；删插件时框架会把它移到
+      `data/removed-plugins/<id>-<时间戳>/data/`，但**重装不会自动恢复**
 - [ ] **改名后检查 `[[requires]]`**：别的插件里写的 value 也要跟着改，
       否则启动时报"缺少依赖"
 - [ ] **命令 id 全局唯一**：不同插件的命令 id 撞了会报
       「feature 冲突」，表现是其中一个插件起不来
 - [ ] **命令和内置命令别重名**（`/help`、`/plugins`）
 - [ ] **高频路径别刷日志**：`host.log('debug', ...)` 会进缓冲区
+- [ ] **初始化别覆盖已保存状态**：先 `host.storage.get`，只有不存在时才写默认
+- [ ] **共享数据重启/重载不会丢**：`[[shared]]` 值只有删除插件才清；不要把 per-chat 数据覆盖成全局对象
+- [ ] **定时器/子进程在 shutdown 里清理**：否则重载会留孤儿
 
 ## 6.1b 休眠（仅开发版实验功能）
 
