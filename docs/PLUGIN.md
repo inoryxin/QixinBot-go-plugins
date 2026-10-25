@@ -1254,7 +1254,7 @@ value = "ai-llm"
 ```js
 const r = await host.capability('llm.chat', { messages: [{ role: 'user', content: '你好' }] })
 if (!r?.ok) {
-  await host.reply(chatOf(session), '画图服务不可用，先发文字吧')
+  await host.reply(chatOf(session), 'LLM 服务不可用，先发文字吧')
   return { handled: true }
 }
 ```
@@ -1269,81 +1269,84 @@ if (!r?.ok) {
 3. 官方依赖由框架/官方插件维护，升级时调用方不用改
 4. 新增官方依赖要同时更新 `/deps` 页和本节表格
 
-## 6.1f 共享依赖 / 插件专属依赖
+## 6.1f 依赖：先看运行时，别重复打包
 
-框架支持两层依赖：
+依赖分三层，查找顺序**从插件到框架**：
 
 ```
-data/deps/python                共享 Python 依赖
-data/deps/node/node_modules     共享 Node 依赖
-<插件>/deps/python              插件专属（优先）
-<插件>/deps/node_modules        插件专属（优先）
+<插件>/deps/python               插件专属（最高优先）
+data/deps/python                 管理员装的共享依赖
+运行时自带（Node node_modules / Python Lib/site-packages）
 ```
 
-Python 查找顺序：**插件专属 → 共享 → 标准库**；Node 的 `NODE_PATH` 同理。
-控制台「依赖」页可以直接安装、上传、查看共享和插件专属依赖。
+Node 对应：
 
-### 插件包只准打包跨平台依赖
+```
+<插件>/deps/node_modules
+data/deps/node/node_modules
+运行时 node_modules
+```
 
-- 允许：`.py`、纯 JS、`*-py3-none-any.whl`（`none-any`）
-- 禁止：`.pyd` / `.so` / `.dll` / `.node`、平台 wheel（`win_amd64`、`manylinux` 等）
-- `qixinpack pack` 会直接报错：
+### 当前 Windows 运行时自带什么
+
+**Node 24.20.0**
+
+| 包 | 版本 |
+|---|---|
+| `@napi-rs/canvas` | 1.0.13 |
+| `axios` | 1.20.0 |
+| `cheerio` | 1.2.0 |
+| `undici` | 8.12.3 |
+| `js-yaml` | 5.5.0 |
+| `dayjs` | 1.11.23 |
+| `lodash` | 4.18.1 |
+| `qrcode` | 1.5.4 |
+| `jimp` | 1.6.1 |
+
+**Python 3.12.10**
+
+| 包 | 版本 |
+|---|---|
+| Pillow | 13.0.0 |
+| numpy | 2.5.4 |
+| requests | 2.34.2 |
+| httpx | 0.28.1 |
+| aiohttp | 3.14.5 |
+| beautifulsoup4 | 4.15.0 |
+| PyYAML | 6.0.3 |
+| python-dateutil | 3.0.0 |
+| pytz / tzdata | 2026.5 |
+| jinja2 | 3.1.6 |
+| pydantic | 2.14.1 |
+| tenacity | 9.2.1 |
+| aiofiles | 25.1.0 |
+| qrcode | 8.2 |
+| imageio | 2.38.1 |
+| emoji | 2.16.0 |
+| psutil | 7.2.2 |
+| lxml | 6.1.3 |
+| cryptography | 50.0.2 |
+
+> 这张表就是"不要重复打包"的清单。表里有的，插件里**不要再带一份**。
+> Linux 运行时包还在做；做完后清单会补进来。
+
+### 插件包只准打包纯代码
+
+| 类型 | 能否打进插件 | 例子 |
+|---|---|---|
+| 纯 Python `.py` / `py3-none-any` wheel | ✅ | 自己写的小工具、纯 Python 库 |
+| 纯 JS（无 `.node`） | ✅ | 自己写的模块 |
+| 原生扩展 / 平台 wheel | ❌ | Pillow、numpy、`@napi-rs/canvas`、sharp、better-sqlite3 |
+| 平台二进制 | ❌ | `.exe`、`.dll`、`.so`、`.node`、`deps/bin/` |
+
+`qixinpack pack` 会检查 `deps/`，发现就报错：
 
 ```
 不要打包平台相关依赖：deps/python/PIL/_imaging.cp312-win_amd64.pyd
 改成 [[requires]]，由运行时或安装时下载提供
 ```
 
-平台相关的（Pillow、numpy、`@napi-rs/canvas`、sharp）由运行时包提供，插件不打包。
-
-### 官方运行时包（4 个）
-
-```
-runtime-node-windows-x64.anzu
-runtime-node-linux-x64.anzu
-runtime-python-windows-x64.anzu
-runtime-python-linux-x64.anzu
-```
-
-自带常用依赖：
-
-- Node：`@napi-rs/canvas`、`sharp`、`better-sqlite3`、`axios`、`cheerio`、`undici`、`dayjs`、`lodash` 等
-- Python：Pillow、numpy、psutil、lxml、cryptography、requests、httpx、aiohttp、bs4、PyYAML 等
-
-### 运行时包格式
-
-运行时包也是 `.anzu`，用 `kind = "runtime"` 区分：
-
-```toml
-id = "node-24.20.0-windows-x64"
-name = "Node.js 24.20.0"
-version = "24.20.0"
-kind = "runtime"
-exec = ["node.exe"]
-
-[runtime]
-kind = "node"          # node / python
-version = "24.20.0"
-platform = "windows-x64"
-```
-
-包里放 `node.exe`、`node_modules/`、`fonts/`，或 `python.exe`、`Lib/site-packages/`、`fonts/`。
-框架会把运行时自己的 `node_modules/` 加进 `NODE_PATH`，运行时自己的字体也会注册。
-
-> **已打包 Windows 运行时**：`runtime-node-windows-x64.anzu`（Node 24.20.0）、`runtime-python-windows-x64.anzu`（Python 3.12.10），都带共享依赖和字体。
->
-> **下载按钮只下载我们发布的 `runtime-*.anzu`**，里面已经带共享依赖和字体；
-> 不会去 nodejs.org / python.org 下裸解释器。裸包装完还得再联网装依赖，离线不可用，
-> 也不符合"装完就能跑"的目标。
-上传到「插件」页或「依赖」页都行，安装器识别 `kind="runtime"` 后：
-
-```
-data/runtimes/node/24.18.0/windows-x64/
-```
-
-- 当前平台匹配 → 自动设为框架运行时
-- 平台不匹配 → 存着但标记不可用，不覆盖当前运行时
-- 不会出现在插件列表
+所以插件包**一份就能跨平台**，平台差异由运行时包/依赖安装解决。
 
 ### 依赖声明
 
@@ -1351,14 +1354,23 @@ data/runtimes/node/24.18.0/windows-x64/
 [[requires]]
 kind = "python"
 name = "Pillow"
-version = ">=10,<12"
+version = ">=10,<14"
 ```
 
-- 共享/运行时里有满足的版本 → 直接用
-- 插件包里有纯 Python/JS 版本 → 用插件的
-- 都没有：
-  - 写了 `download = true` → 安装时下载当前平台版本到插件目录
-  - 没写 → 插件进入「安装失败」，管理员在「依赖」页手动补，**运行时不联网装包**
+```toml
+[[requires]]
+kind = "node"
+name = "sharp"
+version = "^0.34"
+```
+
+解析顺序：
+
+1. 插件 `deps/` 里有 → 用插件的
+2. 运行时/共享里有满足的版本 → 直接用
+3. 都没有 → 插件进入 `failed`，管理员在「依赖」页手动装
+
+`download = true` 是**预留**能力：
 
 ```toml
 [[requires]]
@@ -1369,13 +1381,52 @@ download = true
 hashes = ["sha256:..."]
 ```
 
+当前版本还不会自动下载；带 `download = true` 的插件缺依赖时同样进审核/手动安装，
+后续才接自动下载。**运行时不联网装包**。
+
 ### 管理员兜底
 
-插件没声明、启动报 `No module named 'xxx'` 时：
+插件没声明、启动报：
 
-1. 插件状态变成 `failed`，错误显示在「依赖」页
-2. 管理员可以选择 Python/Node、填包名版本，**装到该插件目录**
-3. 装完重载插件即可，不需要重新打包
+```
+ModuleNotFoundError: No module named 'xxx'
+```
+
+1. 插件状态变 `failed`，错误显示在「依赖」页
+2. 管理员选 Python/Node、填包名和版本，装到**该插件目录**
+3. 重载插件即可，不用重新打包
+
+共享依赖缺失时也可以直接装到 `data/deps`，所有插件受益。
+
+### 运行时包
+
+运行时包也是 `.anzu`，用 `kind = "runtime"` 区分：
+
+```toml
+id = "runtime-node-windows-x64"
+name = "Node.js 24.20.0 (Windows x64)"
+version = "24.20.0"
+kind = "runtime"
+exec = ["node.exe"]
+
+[runtime]
+kind = "node"
+version = "24.20.0"
+platform = "windows-x64"
+```
+
+- Node 包放 `node.exe`、`node_modules/`、`fonts/`
+- Python 包放 `python.exe`、`Lib/site-packages/`、`fonts/`
+- 上传到「插件」页或「依赖」页都会自动识别，装到 `data/runtimes/<kind>/<version>/<platform>/`
+- 当前平台自动设为运行时；平台不匹配只存不用
+- 下载按钮只下载我们发布的完整运行时包，不下载 nodejs.org / python.org 裸解释器
+
+当前已打包 Windows：
+
+```
+runtime-node-windows-x64.anzu     Node 24.20.0
+runtime-python-windows-x64.anzu   Python 3.12.10
+```
 
 ## 6.2 共享数据
 
@@ -3231,96 +3282,84 @@ setInterval(() => {
 
 ## 7.9 依赖怎么打包
 
-**自动的**：`qixinpack pack` 会把插件目录下的所有文件打进去，包括 `node_modules/`。
+**先看 [6.1f](#61f-依赖先看运行时别重复打包) 的运行时清单。表里有的，不要打包。**
+
+### 决策顺序
+
+```
+运行时自带？
+  ├─ 有 → 直接 import / require，插件不打包
+  └─ 没有
+      ├─ 纯 Python / 纯 JS → 可以放插件 deps/
+      ├─ 平台原生 → 不要打包，声明 [[requires]]，管理员装
+      └─ 大二进制（ffmpeg）→ [[requires]] 系统依赖，不放包
+```
+
+### 纯 Node 依赖
+
+只有确认运行时没有、且不含 `.node` 的纯 JS 包，才放 `deps/node_modules/`：
 
 ```powershell
 cd my-plugin
-npm install --omit=dev            # 只装生产依赖
-.\bin\qixinpack.exe pack . -out ..\my-plugin.anzu
+npm install --omit=dev --ignore-scripts <包名>
 ```
 
-目录结构：
+目录：
 
 ```
 my-plugin/
 ├── manifest.toml
 ├── app/index.js
-├── assets/              ← 素材
 └── deps/
-    └── node_modules/    ← 依赖
+    └── node_modules/    ← 只能是纯 JS
 ```
 
-### 为什么放在插件根目录
-
-Node 从 `app/index.js` 向上找 `node_modules`：
+`qixinpack pack` 会拒绝：
 
 ```
-app/index.js → app/node_modules（没有）→ my-plugin/node_modules（有）✓
+deps/node_modules/sharp/build/Release/sharp.node
 ```
 
-所以放在 `deps/node_modules/`，框架会自动设 `NODE_PATH`。
+### 纯 Python 依赖
 
-> **别放 `app/node_modules/`**——虽然 Node 也能找到，但和目录约定不一致，
-> 换插件作者时容易搞混。
-
-### 三个注意点
-
-1. **`npm install --omit=dev`** —— 别把测试依赖打进去，包会大一倍
-2. **单文件 32MB 上限** —— 超过会报错，大二进制建议用 `[runtime]` 声明外部依赖
-3. **原生模块要装对平台** —— `better-sqlite3` 这类在 Windows 编的，拿到 Linux 跑不了
-
-### Python 依赖：以 Pillow 为例
-
-先看官方共享依赖表；没有的再装进插件 `deps/python/`。插件目录会优先于共享目录加进 `PYTHONPATH`：
+只有 `py3-none-any` 的包才可以打进 `deps/python/`：
 
 ```powershell
-cd my-plugin
-
-# 用服务器上配置的 Python（版本要和运行时环境一致）
-& "C:\qqbot\tools\py\python.exe" -m pip install `
-  --target .\deps\python --upgrade --no-cache-dir Pillow
-
-# 有 requirements.txt 时
-& "C:\qqbot\tools\py\python.exe" -m pip install `
-  --target .\deps\python -r requirements.txt
+& "<运行时 python>" -m pip install `
+  --target .\deps\python --only-binary=:all: --no-cache-dir <纯 Python 包>
 ```
 
-验证：
+**不要用这个方式装 Pillow / numpy / lxml**：它们是平台 wheel，运行时已经带了；
+硬装会被 qixinpack 拦下，也违背"插件不分平台"。
 
-```powershell
-$env:PYTHONPATH = "$PWD\deps\python"
-& "C:\qqbot\tools\py\python.exe" -c "from PIL import Image; print(Image.__version__)"
-```
-
-manifest 正常写：
+### 原生依赖 / 大依赖
 
 ```toml
-exec = ["python", "app/main.py"]
+[[requires]]
+kind = "python"
+name = "opencv-python"
+version = "4.10.*"
 ```
 
-框架启动时会用运行时环境里配置的 Python，并注入 `PYTHONPATH=deps/python`，所以代码里直接：
+- 运行时没有、又必须用的原生包：声明依赖，管理员在「依赖」页装到共享或插件目录
+- ffmpeg 这类：`[[requires]]` 声明系统安装，不要塞进 `deps/bin`
+- 不要为了省事把 `.exe/.dll/.so` 打进插件包
 
-```python
-from PIL import Image
-```
+### 体积限制
 
-即可，不用改 `sys.path`。
+- 插件包单文件 **32MB**
+- 运行时包单文件 **256MB**
+- 超过就拆依赖/走运行时，不要硬塞
 
-注意：
+### 常见错误
 
-- **Python 版本要匹配**：服务器是 3.12，就给 3.12 装；Pillow 的 wheel 是 `cp312-win_amd64` 这类平台/版本专用包
-- 开发机和服务器的 Python 版本不同时，在服务器同版本环境里重装依赖
-- `deps/python` 会打进 `.anzu`（已验证），单文件别超过 32MB
-- 建议先删旧目录再装，避免 `--target` 留下旧版本文件
-- 换平台要重装对应 wheel；跨平台分发就分平台打包
-
-### 非 Node 插件的依赖
-
-- **Python**：`pip install -t deps/python`，框架自动设 `PYTHONPATH`
-- **二进制**：放 `deps/bin/`，框架自动加进 `PATH`；或 `exec = ["./deps/bin/xxx"]`
-- **大依赖**（ffmpeg）：不放包里，用 `[[requires]]` 声明系统安装
-
----
+| 写法 | 问题 |
+|---|---|
+| `deps/python/PIL/*.pyd` | 平台原生，qixinpack 拒绝 |
+| `deps/node_modules/sharp/*.node` | 平台原生，qixinpack 拒绝 |
+| `deps/node_modules/` 里装一堆开发依赖 | 包大一倍，`--omit=dev` |
+| 把 Pillow 塞进插件 | 运行时已有，重复且跨平台坏 |
+| `deps/bin/ffmpeg.exe` | 平台二进制，改用系统依赖 |
 
 ## 8. 数据与依赖
 
