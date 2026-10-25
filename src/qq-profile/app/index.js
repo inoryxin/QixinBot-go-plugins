@@ -11,7 +11,7 @@ function owner() {
 }
 
 function isOwner(session) {
-  return !owner() || String(session.user_id) === owner()
+  return session.role === 'owner' || !owner() || String(session.user_id) === owner()
 }
 
 function chatOf(session) {

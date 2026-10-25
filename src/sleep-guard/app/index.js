@@ -167,7 +167,7 @@ serve({
     const text = String(session.text || '').trim().replace(/^\//, '')
     if (text !== '催睡') return { handled: false }
     const owner = String(settings.userId || '')
-    if (owner && String(session.user_id) !== owner) {
+    if (owner && session.role !== 'owner' && String(session.user_id) !== owner) {
       await host.reply({ account: session.account, chat_type: session.chat_type, chat_id: session.chat_id }, '这个只有老公能按。')
       return { handled: true }
     }

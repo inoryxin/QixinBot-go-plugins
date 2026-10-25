@@ -1618,7 +1618,7 @@ deps/python/.../*.pyd           → 拒绝
 | 数据 | 存在哪 | 重启 | 升级插件 | 禁用/重载 | 删除插件 |
 |---|---|---|---|---|---|
 | `[[settings]]` | `data/plugins/<id>/data/settings.json` | ✅ | ✅ | ✅ | 备份到 `removed-plugins` |
-| `host.storage` | 框架存储（SQLite `data/plugins.db` / JSON） | ✅ | ✅ | ✅ | ✅（按插件 id 保留？见下） |
+| `host.storage` | 框架存储（SQLite `data/plugins.db` / JSON） | ✅ | ✅ | ✅ | ✅（存储里保留） |
 | `[[shared]]` | `data/qixin.db` / `data/shared.json` | ✅ | ✅ | ✅ | ❌ |
 | 插件自己写的 `data/` 文件 | `data/plugins/<id>/data/` | ✅ | ✅ | ✅ | 备份到 `removed-plugins` |
 | 模块变量 / `setInterval` | 进程内存 | ❌ | ❌ | ❌ | ❌ |
