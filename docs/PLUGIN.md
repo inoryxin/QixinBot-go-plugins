@@ -1817,6 +1817,64 @@ const file = path.join(process.env.QIXIN_ASSETS_DIR, 'img', 'cat.png')
 await host.reply(chat, [{ type: 'image', data: { file } }])
 ```
 
+### 框架运行时环境（Node / Python 路径）
+
+管理员在控制台「运行时环境」里指定 Node.js / Python 路径，保存在 `data/runtime.json`。
+框架启动插件时，如果 `exec[0]` 是 `node` / `node.exe` / `python` / `python3`，会自动换成这个路径，
+**不依赖系统 PATH 里的默认版本**。改完路径需要重载/重启插件才生效。
+
+插件进程里可以直接读：
+
+```js
+process.env.QIXIN_NODE        // 管理员配置的 Node 路径（没配置就没有）
+process.env.QIXIN_PYTHON      // 管理员配置的 Python 路径（没配置就没有）
+process.env.QIXIN_PLUGIN_ID   // 插件 id
+process.env.QIXIN_PLUGIN_DIR  // 运行区根目录
+process.env.QIXIN_DATA_DIR    // 持久数据目录
+process.env.QIXIN_ASSETS_DIR  // 素材目录
+process.env.QIXIN_EXPERIMENTAL // 开发线为 1；发行版没有这个变量
+```
+
+依赖目录也会自动注入：
+
+```
+deps/node_modules → NODE_PATH
+deps/python       → PYTHONPATH
+deps/bin          → PATH 末尾
+```
+
+`initialize` 还会收到：
+
+```js
+async initialize({ plugin_id, data_dir, host_version, settings }) { ... }
+```
+
+### 怎么用框架的解释器起子进程
+
+不要写死 `node` / `python` 或 `C:\...`，用当前进程：
+
+```js
+// Node 插件
+const node = process.execPath
+spawn(node, ['worker.js'])
+
+// 或者框架配置的路径（可能为空）
+const node2 = process.env.QIXIN_NODE || process.execPath
+```
+
+```python
+# Python 插件
+import sys, subprocess
+subprocess.run([sys.executable, 'worker.py'])
+```
+
+另外 `config.toml` 的 `[plugin] env` 可以给**所有插件**注入额外环境变量：
+
+```toml
+[plugin]
+env = { MY_API = "xxx" }
+```
+
 ### 发本地素材
 
 **绝对路径**，必须在 `data/` 下（安全限制），**单文件 20MB 上限**。
