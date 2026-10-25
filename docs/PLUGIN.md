@@ -1328,6 +1328,10 @@ platform = "windows-x64"
 ```
 
 包里放 `node.exe`、`node_modules/` 或 `python.exe`、`Lib/`、共享依赖等。
+
+> **下载按钮只下载我们发布的 `runtime-*.anzu`**，里面已经带共享依赖和字体；
+> 不会去 nodejs.org / python.org 下裸解释器。裸包装完还得再联网装依赖，离线不可用，
+> 也不符合"装完就能跑"的目标。
 上传到「插件」页或「依赖」页都行，安装器识别 `kind="runtime"` 后：
 
 ```
