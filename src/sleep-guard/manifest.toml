@@ -1,0 +1,79 @@
+id = "sleep-guard"
+name = "催睡"
+version = "1.0.0"
+apiVersion = "1.x"
+exec = ["node", "app/index.js"]
+description = "凌晨 5 点看主人设备还亮着就用 AI 私聊催睡，半小时后还不睡再催一次"
+permissions = ["onebot.write"]
+
+[access]
+require_prefix = false
+require_mention = false
+
+[[commands]]
+id = "sleep.manual"
+usage = "催睡"
+description = "手动触发一次催睡检查"
+hidden = true
+require_prefix = false
+
+[[settings]]
+key = "enabled"
+label = "启用催睡"
+type = "bool"
+default = true
+
+[[settings]]
+key = "hour"
+label = "检查小时"
+type = "number"
+default = 5
+min = 0
+max = 23
+
+[[settings]]
+key = "minute"
+label = "检查分钟"
+type = "number"
+default = 0
+min = 0
+max = 59
+
+[[settings]]
+key = "retryMinutes"
+label = "再次催促间隔（分钟）"
+type = "number"
+default = 30
+min = 5
+
+[[settings]]
+key = "userId"
+label = "主人的 QQ"
+type = "string"
+default = "2849446053"
+
+[[settings]]
+key = "statusUrl"
+label = "状态页地址"
+type = "string"
+default = "https://home.inory.xin:9010/query"
+
+[[settings]]
+key = "deviceKeywords"
+label = "设备关键词（逗号分隔）"
+type = "string"
+default = "📱,💻"
+
+[[settings]]
+key = "timeoutMs"
+label = "状态页超时（毫秒）"
+type = "number"
+default = 8000
+min = 1000
+
+[[tools]]
+name = "get_sleep_guard_status"
+description = "查看催睡功能今天有没有触发过、最后一次提醒时间。用户问「今天催睡了吗」时调用。"
+
+[tools.parameters]
+type = "object"
