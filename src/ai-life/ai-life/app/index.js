@@ -70,6 +70,109 @@ function nextChange(row) {
   return String(row[1]).padStart(2, '0') + ':00'
 }
 
+
+// ---------------- 自动日程 ----------------
+function pad(n) { return String(n).padStart(2, '0') }
+function dateStr(d) { return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` }
+function tomorrowDate() { return dateStr(new Date(Date.now() + 86400000)) }
+function resolveDate(v) {
+  const s = String(v || '').trim()
+  if (s === 'tomorrow' || s === '明天') return tomorrowDate()
+  if (!s || s === 'today' || s === '今天') return dateStr(new Date())
+  return s
+}
+function isWorkday(dateStrValue) {
+  const d = new Date(dateStrValue + 'T12:00:00')
+  const wd = d.getDay() === 0 ? 7 : d.getDay() // 1-7, 7=周日
+  const spec = String(settings.work_days || '1-5')
+  for (const part of spec.split(',')) {
+    const [a, b] = part.split('-').map(Number)
+    if (b ? wd >= a && wd <= b : wd === a) return true
+  }
+  return false
+}
+async function loadPlan(date) {
+  const v = await host.storage.get(`life:plan:${date}`)
+  return Array.isArray(v) ? v : []
+}
+async function clearAllPlans() {
+  const keys = await host.storage.list('life:plan:')
+  for (const k of keys) await host.storage.delete(k)
+}
+async function previousPlan(date) {
+  // 找最近一个同类型（工作日/周末）计划，复用它的时间段保证规律
+  const target = isWorkday(date)
+  for (let i = 1; i <= 7; i++) {
+    const d = new Date(date + 'T12:00:00')
+    d.setDate(d.getDate() - i)
+    const ds = dateStr(d)
+    if (isWorkday(ds) !== target) continue
+    const items = await loadPlan(ds)
+    if (items.length) return items
+  }
+  return []
+}
+function summarizePlan(items) {
+  return items
+    .filter((it) => it.activity)
+    .map((it) => `${it.start} ${it.activity}`)
+    .slice(0, 5)
+    .join('；')
+}
+async function generatePlan(date, force = false) {
+  if (!force && (await loadPlan(date)).length) return
+  const prev = await previousPlan(date)
+  const work = isWorkday(date)
+  const slots = prev.map((it) => `${it.start}-${it.end}`).join('、')
+  const prompt = work
+    ? `她的职业是「${settings.occupation || '上班族'}」。${date} 是工作日。作息：${settings.wake_hour ?? 7} 点起床，${settings.sleep_hour ?? 23} 点睡觉，${settings.work_start ?? 9}-${settings.work_end ?? 18} 上班。
+请生成这一天的详细时间表，保持和平时一致：${slots ? '时间段固定为 ' + slots + '，只填每段在做什么、心情、精力。' : '从起床到睡觉，时间段连续。'}
+只输出 JSON 数组：{"start":"HH:MM","end":"HH:MM","activity":"在做什么","mood":"心情","energy":0-100}，不要解释。`
+    : `她的职业是「${settings.occupation || '上班族'}」。${date} 是休息日，不上班。
+请生成这一天的详细时间表，安排休息、出门或娱乐：${slots ? '时间段固定为 ' + slots + '，只填每段在做什么、心情、精力。' : '从起床到睡觉，时间段连续。'}
+只输出 JSON 数组：{"start":"HH:MM","end":"HH:MM","activity":"在做什么","mood":"心情","energy":0-100}，不要解释。`
+  const r = await host.capability('llm.chat', {
+    messages: [{ role: 'user', content: prompt }],
+    temperature: 0.5,
+  })
+  const text = String(r?.data?.text || '')
+  const m = /\[[\s\S]*\]/.exec(text)
+  if (!m) throw new Error('模型没有返回时间表')
+  const parsed = JSON.parse(m[0])
+  let items = normalizePlan(parsed)
+  if (prev.length) {
+    // 同类型日期强制复用上一份的时间段，保证"每天同一个点做同一类事"
+    items = prev.map((slot, i) => ({
+      start: slot.start,
+      end: slot.end,
+      activity: items[i]?.activity || slot.activity || '休息',
+      mood: items[i]?.mood || slot.mood || '平静',
+      energy: typeof items[i]?.energy === 'number' ? items[i].energy : (slot.energy ?? 50),
+    }))
+  }
+  if (!items.length) throw new Error('时间表为空')
+  await host.storage.set(`life:plan:${date}`, items)
+  host.log('info', `已生成 ${date} 的时间表（${items.length} 段，${work ? '工作日' : '休息日'}）`)
+}
+async function ensurePlans() {
+  const base = new Date()
+  for (let i = 0; i <= 2; i++) {
+    const d = new Date(base)
+    d.setDate(d.getDate() + i)
+    const ds = dateStr(d)
+    try { await generatePlan(ds) } catch (e) { host.log('warn', `生成 ${ds} 日程失败: ${e.message}`) }
+  }
+}
+function scheduleMidnight() {
+  const now = new Date()
+  const next = new Date(now)
+  next.setHours(24, 0, 5, 0)
+  setTimeout(async () => {
+    try { await ensurePlans() } catch (e) { host.log('warn', '零点日程失败: ' + e.message) }
+    scheduleMidnight()
+  }, Math.max(1000, next.getTime() - now.getTime()))
+}
+
 async function currentState() {
   const now = new Date()
   const hour = now.getHours()
@@ -149,15 +252,30 @@ serve({
   async initialize({ settings: s }) {
     settings = s || {}
     host.log('info', '她的生活已启动')
+    ensurePlans().catch((e) => host.log('warn', '初始化日程失败: ' + e.message))
+    scheduleMidnight()
     return { api_version: '1.0' }
   },
 
   async set_settings({ values }) {
+    const oldKey = settings.occupation + '|' + settings.work_days
     settings = { ...settings, ...values }
+    const newKey = settings.occupation + '|' + settings.work_days
+    if (oldKey !== newKey) {
+      await clearAllPlans()
+      ensurePlans().catch((e) => host.log('warn', '重排日程失败: ' + e.message))
+    }
     return { ok: true }
   },
 
   async call_tool({ name, args }) {
+    if (name === 'life_now') return callCapability('life.now', args)
+    if (name === 'life_plan') {
+      const date = resolveDate(args?.date)
+      const items = await loadPlan(date)
+      if (!items.length) return { ok: true, data: { text: `${date} 还没有安排` } }
+      return { ok: true, data: { text: `${date}：` + summarizePlan(items) } }
+    }
     return callCapability(name, args)
   },
 
@@ -169,7 +287,17 @@ serve({
 async function callCapability(name, args) {
   if (name === 'life.now') {
     const st = await currentState()
-    return { ok: true, data: { ...st, text: describe(st) } }
+    const tomorrow = tomorrowDate()
+    const tItems = await loadPlan(tomorrow)
+    return {
+      ok: true,
+      data: {
+        ...st,
+        text: describe(st),
+        tomorrow_date: tomorrow,
+        tomorrow_summary: tItems.length ? summarizePlan(tItems) : '',
+      },
+    }
   }
 
   if (name === 'life.plan') {
