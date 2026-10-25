@@ -428,11 +428,13 @@ async function optionalCapability(name, args = {}) {
 
 // 可选依赖：好感度插件装了就用，没装返回 null
 async function affinityOf(userID) {
-  if (!settings.use_affinity || !userID) return null
+  if (!userID) return null
   try {
     const r = await host.capability('affinity.get', { user_id: userID })
     if (!r?.ok) return null
-    return r.data || null
+    const data = r.data || null
+    if (data && data.enabled === false) return null
+    return data
   } catch {
     return null
   }
@@ -1290,7 +1292,7 @@ function targetParts() {
 async function sendSplit(chat, text) {
   // 语音模式：概率由「发语音」插件（ai-voice）的 chat_pct 决定
   // 它说"跳过"就回退文字，这样两个插件的概率只用一处配置
-  if (settings.voice_reply) {
+  {
     try {
       const r = await host.capability('voice.say', {
         text,

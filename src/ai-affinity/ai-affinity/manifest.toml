@@ -1,0 +1,123 @@
+id = "ai-affinity"
+name = "好感度"
+version = "1.0.0"
+apiVersion = "1.x"
+exec = ["node", "app/index.js"]
+description = "记住每个人和她的关系，供 AI 调整语气；带榜单和手动调整"
+
+# 要靠观察者拿全量消息来涨好感（别被 keyword-reply 抢走就漏了）
+observe = true
+
+provides = ["affinity.get@1", "affinity.manage@1"]
+
+[[capability]]
+name = "affinity.get"
+
+[capability.parameters]
+type = "object"
+required = ["user_id"]
+
+[capability.parameters.properties.user_id]
+type = "number"
+
+[[capability]]
+name = "affinity.manage"
+
+[capability.parameters]
+type = "object"
+required = ["action"]
+
+[capability.parameters.properties.action]
+type = "string"
+enum = ["list", "top", "get", "set", "add"]
+
+[capability.parameters.properties.user_id]
+type = "number"
+
+[capability.parameters.properties.score]
+type = "number"
+
+[capability.parameters.properties.delta]
+type = "number"
+
+[capability.parameters.properties.limit]
+type = "number"
+
+# 它是 AI 聊天的扩展：没有主插件就没有意义
+[[requires]]
+kind = "plugin"
+name = "AI 聊天"
+value = "ai-chat"
+
+[[commands]]
+id = "affinity.view"
+usage = "好感"
+description = "看她对你（或被@的人）的好感度"
+
+[[commands]]
+id = "affinity.top"
+usage = "好感 榜"
+description = "好感度排行榜"
+
+[[commands]]
+id = "affinity.add"
+usage = "好感 加 <QQ> <分值>"
+description = "给某人加/减好感（管理员）"
+require_role = "admin"
+
+[[commands]]
+id = "affinity.set"
+usage = "好感 设 <QQ> <分值>"
+description = "直接设定好感（管理员）"
+require_role = "admin"
+
+[[settings]]
+key = "enabled"
+label = "启用好感度"
+type = "bool"
+default = true
+
+[[settings]]
+key = "base_score"
+label = "基础分（陌生人的起点）"
+type = "number"
+default = 30
+hint = "低于基础分就是关系不好，会阴阳怪气"
+
+[[settings]]
+key = "daily_gain"
+label = "每天靠聊天最多涨几分"
+type = "number"
+default = 2
+
+[[settings]]
+key = "daily_loss"
+label = "每天最多掉几分"
+type = "number"
+default = 5
+
+[[settings]]
+key = "master_qq"
+label = "主人 QQ（好感永远满）"
+type = "string"
+default = ""
+hint = "逗号分隔；主人骂你也当调情"
+
+[[settings]]
+key = "judge_enabled"
+label = "用模型判断坏话该不该降分"
+type = "bool"
+default = true
+hint = "反讽/调情/吐槽不降；真攻击才降。只对可疑句子调模型"
+
+[[settings]]
+key = "judge_max_per_day"
+label = "每天最多判断几次（省 token）"
+type = "number"
+default = 10
+
+[[settings]]
+key = "private_bonus"
+label = "私聊每条额外加几分"
+type = "number"
+default = 1

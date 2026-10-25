@@ -158,6 +158,8 @@ serve({
     // 来自 AI 聊天的语音：按 chat_pct 决定发不发（概率只在这里配置）
     let pct = null
     if (String(args?.source || '') === 'chat') {
+      const on = settings.chat_enabled === true || settings.chat_enabled === 'true' || settings.chat_enabled === 1 || settings.chat_enabled === undefined
+      if (!on) return { ok: false, skipped: 'disabled', pct: 0 }
       pct = Math.max(0, Math.min(100, Number(settings.chat_pct ?? 30)))
       if (pct <= 0 || Math.random() * 100 >= pct) {
         return { ok: false, skipped: 'probability', pct }

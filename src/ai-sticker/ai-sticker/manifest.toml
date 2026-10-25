@@ -67,6 +67,13 @@ items = { type = "string" }
 type = "string"
 
 [[settings]]
+key = "chat_enabled"
+label = "允许 AI 回复附带表情包"
+type = "bool"
+default = true
+hint = "关闭后 AI 聊天不会发图，不需要改 ai-chat"
+
+[[settings]]
 key = "chat_pct"
 label = "AI 回复附带表情包的概率（%）"
 type = "number"

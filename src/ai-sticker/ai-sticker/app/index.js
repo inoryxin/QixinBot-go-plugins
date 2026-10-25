@@ -188,6 +188,8 @@ async function pickSticker({ emotion, context, chat_type, chat_id, source }) {
 
   // AI 聊天调用时，概率由本插件决定（和 ai-voice 的 chat_pct 一个模式）
   if (source === 'chat') {
+    const on = settings.chat_enabled === true || settings.chat_enabled === 'true' || settings.chat_enabled === 1 || settings.chat_enabled === undefined
+    if (!on) return { ok: false, skipped: 'disabled', pct: 0 }
     const pct = Math.max(0, Math.min(100, Number(settings.chat_pct ?? 25)))
     if (pct <= 0 || Math.random() * 100 >= pct) {
       return { ok: false, skipped: 'probability', pct }

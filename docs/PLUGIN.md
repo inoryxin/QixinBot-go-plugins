@@ -1204,6 +1204,26 @@ serve({
 - 需要"每天几点"这类墙钟时间，用 `setTimeout` 算到下一个目标时间再递归
 - `[[schedule]]` 只在开发线（`-tags dev`）生效，用来做休眠唤醒实验
 
+## AI 插件设置归属约定
+
+AI 相关功能分散在多个插件，配置必须**跟着提供能力的插件走**，调用方不复制开关：
+
+| 功能 | 归属插件 | 配置 |
+|---|---|---|
+| 语音回复 | ai-voice | `chat_enabled`、`chat_pct` |
+| 附带表情包 | ai-sticker | `chat_enabled`、`chat_pct` |
+| 好感度语气 | ai-affinity | `enabled` |
+| 人设 | ai-persona | 各人设字段 |
+| 主动发言 | ai-proactive | `enabled`、群白名单等 |
+| LLM | ai-llm | `base_url`、`api_key`、`model`、`vision` |
+
+规则：
+
+1. 能力提供方拥有开关、概率、资源；调用方只调能力
+2. 插件没装/禁用时，调用方静默跳过，不留"僵尸设置"
+3. 跨插件开关统一用 `chat_*` 命名（`chat_enabled` / `chat_pct`）
+4. `ai-chat` 页面只保留自己的记忆、分条、水群等设置，并提供「相关插件设置」入口
+
 ## 6.2 共享数据
 
 插件可以把自己的一部分数据托管给框架，其他插件读。
