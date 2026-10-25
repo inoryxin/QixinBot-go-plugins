@@ -40,7 +40,7 @@ async function fetchSaying() {
   }
 }
 
-serve({
+const app = {
   async initialize({ settings: s }) {
     settings = s || {}
     return { api_version: '1.0' }
@@ -49,6 +49,7 @@ serve({
   // 设置保存后框架会推过来：不接这个回调，改了群号也得重启才生效
   async set_settings({ values }) {
     settings = { ...settings, ...(values || {}) }
+    if (typeof __scheduleNcmDaily === 'function') __scheduleNcmDaily()
     host.log('info', '设置已更新', { auto_groups: settings.auto_groups })
     return { ok: true }
   },
@@ -90,4 +91,31 @@ serve({
     host.log('info', `每日热评已发送 ${ok}/${groups.length} 个群`)
     return { ok: ok > 0 }
   },
-})
+}
+serve(app)
+
+// ---- 插件自管定时（发行版）----
+// 开发线（QIXIN_EXPERIMENTAL=1）由框架的 [[schedule]] 接管，这里不重复启动。
+const __SELF_TIMER = !process.env.QIXIN_EXPERIMENTAL
+function __runTask(task) {
+  if (!__SELF_TIMER) return
+  Promise.resolve(app.run_task({ task })).catch((e) => {
+    host.log('warn', `定时 ${task} 执行失败: ${e && e.message ? e.message : e}`)
+  })
+}
+let __ncmTimer = null
+function __scheduleNcmDaily() {
+  if (!__SELF_TIMER) return
+  if (__ncmTimer) clearTimeout(__ncmTimer)
+  const h = Number(settings.hour ?? 0), m = Number(settings.minute ?? 0)
+  const now = new Date()
+  const next = new Date(now)
+  next.setHours(h, m, 0, 0)
+  if (next.getTime() <= now.getTime()) next.setDate(next.getDate() + 1)
+  __ncmTimer = setTimeout(async () => {
+    __runTask('daily')
+    __scheduleNcmDaily()
+  }, next.getTime() - now.getTime())
+}
+__scheduleNcmDaily()
+if (__SELF_TIMER) host.log('info', '发行版自管定时已启动')

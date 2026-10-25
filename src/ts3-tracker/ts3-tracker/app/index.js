@@ -276,7 +276,7 @@ async function poll() {
 
 // ---------------------------------------------------------------- 服务
 
-serve({
+const app = {
   async initialize({ settings: initial }) {
     settings = initial || {}
     host.log('info', `TS3 追踪启动 host=${settings.host || '未配置'}`)
@@ -332,4 +332,17 @@ serve({
     }
     return { ok: true }
   },
-})
+}
+serve(app)
+
+// ---- 插件自管定时（发行版）----
+// 开发线（QIXIN_EXPERIMENTAL=1）由框架的 [[schedule]] 接管，这里不重复启动。
+const __SELF_TIMER = !process.env.QIXIN_EXPERIMENTAL
+function __runTask(task) {
+  if (!__SELF_TIMER) return
+  Promise.resolve(app.run_task({ task })).catch((e) => {
+    host.log('warn', `定时 ${task} 执行失败: ${e && e.message ? e.message : e}`)
+  })
+}
+__SELF_TIMER && setInterval(() => __runTask('poll'), 15 * 1000)
+if (__SELF_TIMER) host.log('info', '发行版自管定时已启动')

@@ -1,0 +1,78 @@
+id = "bilibili"
+name = "B站订阅"
+version = "1.0.0"
+apiVersion = "1.x"
+exec = ["node", "app/index.js"]
+description = "开播、视频、图文动态推送；支持二维码登录和 UP 主订阅"
+
+permissions = ["onebot.write"]
+
+# 给 WebUI 用的能力（订阅管理、扫码登录）。必须在任何 [table] 之前，否则会被算进那个表。
+provides = [
+  "bili.sub.list@1",
+  "bili.sub.save@1",
+  "bili.qr.start@1",
+  "bili.qr.poll@1",
+  "bili.nav@1",
+  "bili.block.get@1",
+  "bili.block.save@1",
+]
+
+[access]
+require_prefix = true
+require_mention = false
+
+[[commands]]
+id = "bili.status"
+usage = "bili"
+aliases = ["b站"]
+description = "查看 B 站订阅概览"
+
+[[commands]]
+id = "bili.check"
+usage = "bili check"
+description = "立即检查一次直播与动态"
+
+[[commands]]
+id = "bili.preview"
+usage = "bili preview"
+description = "预览某个 UP 最新一条动态的推送样式"
+
+[[tools]]
+name = "check_bilibili_live"
+description = "查看已订阅的 B 站 UP 主当前有没有在直播、直播标题和链接。用户问「谁在播」「开播了吗」时调用。"
+
+[tools.parameters]
+type = "object"
+
+# 轮询探测：固定 20 秒问一次，实际间隔由设置里的 liveSeconds/dynamicSeconds 控制
+[[schedule]]
+id = "poll"
+every = "20s"
+description = "检查直播状态与动态更新"
+
+[[settings]]
+key = "cookie"
+label = "登录 Cookie"
+type = "password"
+default = ""
+
+[[settings]]
+key = "liveSeconds"
+label = "直播轮询间隔（秒）"
+type = "number"
+default = 60
+min = 30
+max = 3600
+
+[[settings]]
+key = "dynamicSeconds"
+label = "动态轮询间隔（秒）"
+type = "number"
+default = 180
+min = 60
+max = 7200
+
+[runtime]
+kind = "node"
+version = ">=18"
