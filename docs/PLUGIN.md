@@ -1354,6 +1354,7 @@ data/deps/node/node_modules
 [[requires]]
 kind = "python"
 name = "Pillow"
+module = "PIL"       # import 名；Pillow 的模块名是 PIL
 version = ">=10,<14"
 ```
 
