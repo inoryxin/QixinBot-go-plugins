@@ -172,6 +172,8 @@ serve({
     if (name !== 'roll_pig') return { ok: false, error: '未知工具' }
     const pigs = await loadPigs()
     const pig = pigs[Math.floor(Math.random() * pigs.length)]
-    return { ok: true, data: { text: `抽到小猪：${pig.title}\n${imageUrl(pig)}` } }
+    const analysis = ANALYSIS[Math.floor(Math.random() * ANALYSIS.length)]
+    const image = await renderCard(pig, '随机小猪', analysis)
+    return { ok: true, data: { image, text: `抽到小猪：${pig.title}` } }
   },
 })

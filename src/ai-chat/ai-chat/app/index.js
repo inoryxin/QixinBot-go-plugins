@@ -1027,10 +1027,33 @@ async function askLLM(messages, tools) {
 }
 
 // 把宿主声明的工具转成 OpenAI 的 function 格式
-async function loadToolDefs(session) {
+function toolAllowed(name, text) {
+  const t = String(text || '')
+  if (name === 'get_qixin_status') return /祈歆|雪然|状态|在线|在干嘛/.test(t)
+  if (name === 'mix_emoji') {
+    const emojis = t.match(/\p{Extended_Pictographic}(?:\uFE0F|\u200D\p{Extended_Pictographic})*/gu) || []
+    return /合成|合一下|mix|组合/i.test(t) && emojis.length >= 2
+  }
+  if (name === 'roll_pig') return /猪/.test(t)
+  if (name === 'draw_fortune') return /运势|抽签|求签|fortune/i.test(t)
+  if (name === 'weather_query') return /天气|气温|下雨|温度/.test(t)
+  if (name === 'check_bilibili_live') return /直播|开播|b站/i.test(t)
+  if (name === 'get_cngal_weekly') return /国g|gal|周报|国产/i.test(t)
+  if (name === 'life_now' || name === 'life_plan') return /在干嘛|干嘛|生活|日程|明天|睡|上班|下班/.test(t)
+  if (name === 'ts3_status') return /ts3?|ts\s*上|谁在|在线/.test(t)
+  if (name === 'what_to_eat') return /吃|喝|饿|饭|夜宵/.test(t)
+  if (name === 'home_control' || name === 'home_environment' || name === 'home_list') {
+    return /灯|空调|温度|湿度|环境|家里|回家|设备|home/i.test(t)
+  }
+  if (name === 'list_triggers') return /触发词|关键词|有哪些指令|指令列表/.test(t)
+  // 没有明确意图的就不给模型工具，避免它瞎调
+  return false
+}
+
+async function loadToolDefs(session, text) {
   try {
     const tools = await host.listTools(session)
-    return (tools || []).map((t) => ({
+    return (tools || []).filter((t) => toolAllowed(t.name, text)).map((t) => ({
       type: 'function',
       function: {
         name: t.name,
@@ -1056,8 +1079,9 @@ async function runToolCall(call, session) {
     // 工具走 host.callTool，不是 host.capability —— 两条不同的通道
     const r = await host.callTool(name, args, session || null)
     if (r?.ok) {
-      const text = r.data?.text ?? JSON.stringify(r.data ?? '')
-      return { ok: true, text: String(text) }
+      const image = r.data?.image || null
+      const text = r.data?.text ?? (image ? '图片已生成' : JSON.stringify(r.data ?? ''))
+      return { ok: true, text: String(text), image }
     }
     return { ok: false, text: r?.error || '工具执行失败' }
   } catch (err) {
@@ -1367,19 +1391,23 @@ async function respond(session, userText, extraPrompt, images) {
   const messages = await buildMessages(session, userText, extraPrompt, images)
   host.log('info', `respond 上下文就绪 msgs=${messages.length} 耗时=${Date.now() - t0}`)
 
-  const tools = await loadToolDefs(session)
+  const tools = await loadToolDefs(session, userText)
   let r = await askLLM(messages, tools)
   host.log('info', `respond LLM ${r.ok ? 'ok' : 'fail:' + r.error} tools=${tools.length} 耗时=${Date.now() - t0}`)
   if (!r.ok) return { ok: false, error: r.error }
 
   // 模型要调工具：执行后把结果喂回去，最多循环 3 轮
   let rounds = 0
+  const toolImages = []
+  let lastToolText = '' 
   while (r.toolCalls.length && rounds < 3) {
     rounds++
     messages.push({ role: 'assistant', content: r.text || '', tool_calls: r.toolCalls })
 
     for (const call of r.toolCalls) {
       const result = await runToolCall(call, session)
+      if (result.image) toolImages.push(result.image)
+      if (result.text) lastToolText = result.text
       host.log('info', `工具 ${call?.function?.name} -> ${result.ok ? 'ok' : 'fail'} ${result.text.slice(0, 60)}`)
       messages.push({
         role: 'tool',
@@ -1393,7 +1421,10 @@ async function respond(session, userText, extraPrompt, images) {
     host.log('info', `工具回合 ${rounds} 完成，还有 ${r.toolCalls.length} 个待调`)
   }
 
-  if (!r.text) return { ok: false, error: 'LLM 没有产出文本' }
+  if (!r.text) {
+    // 模型偶尔空回复：有工具结果就用工具结果，没有就给一句兜底，绝不静默
+    r.text = lastToolText || '嗯？'
+  }
   let text = r.text
   // 主对话那次调用顺手带回的表情标签：剥掉后入库，不额外调视觉模型
   const tagMatch = /<<STICKER:([^>]+)>>/.exec(text)
@@ -1417,7 +1448,11 @@ async function respond(session, userText, extraPrompt, images) {
 
   try {
     const n = await sendSplit(chatOf(session), text)
-    host.log('info', `respond 已发送 parts=${n} 耗时=${Date.now() - t0}`)
+    for (const img of toolImages) {
+      const file = /^https?:\/\//.test(img) ? img : `base64://${img}`
+      await host.sendMessage(chatOf(session), [{ type: 'image', data: { file } }])
+    }
+    host.log('info', `respond 已发送 parts=${n} 图片=${toolImages.length} 耗时=${Date.now() - t0}`)
   } catch (err) {
     host.log('error', '发送失败: ' + err.message)
     return { ok: false, error: err.message }
@@ -1584,7 +1619,7 @@ async function toolChat(args) {
   // 没指定会话：只生成不发送，但工具一样要给（否则问「灯关了吗」它只会瞎猜）
   if (!session.chat_id) {
     const messages = await buildMessages(session, text, prompt, imgs)
-    const tools = await loadToolDefs(session)
+    const tools = await loadToolDefs(session, userText)
     host.log('info', `纯生成 tools=${tools.length} [${tools.map((t) => t.function.name).join(',')}]`)
     let r = await askLLM(messages, tools)
     if (!r.ok) return { ok: false, error: r.error }

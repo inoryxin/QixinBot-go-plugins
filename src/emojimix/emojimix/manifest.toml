@@ -15,3 +15,17 @@ id = "emojimix.mix"
 usage = "😀😃 或 😀+😃"
 description = "消息里出现两个 emoji 就自动合成"
 
+
+[[tools]]
+name = "mix_emoji"
+description = "把两个 emoji 合成一张图。只有用户明确要求合成/组合两个 emoji 时才调用。"
+
+[tools.parameters]
+type = "object"
+required = ["emoji1", "emoji2"]
+
+[tools.parameters.properties.emoji1]
+type = "string"
+
+[tools.parameters.properties.emoji2]
+type = "string"

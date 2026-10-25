@@ -60,7 +60,7 @@ serve({
     if (list.length < 2) return { handled: false }
     const r = await mix(list[0], list[1])
     if (r.error) {
-      await host.reply(chatOf(session), r.error)
+      // 没有这个组合就安静跳过，不回复
       return { handled: true }
     }
     await host.reply(chatOf(session), [
@@ -73,6 +73,6 @@ serve({
     if (name !== 'mix_emoji') return { ok: false, error: '未知工具' }
     const r = await mix(args?.emoji1, args?.emoji2)
     if (r.error) return { ok: false, error: r.error }
-    return { ok: true, data: { text: `合成好了：${r.url}` } }
+    return { ok: true, data: { image: r.buffer.toString('base64'), text: '合成好了' } }
   },
 })
