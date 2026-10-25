@@ -1,0 +1,65 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>表情包</title>
+<style>
+body{font-family:system-ui,sans-serif;background:#0f1115;color:#e6e6e6;margin:0;padding:18px}
+h1{font-size:18px;margin:0 0 6px}.sub{color:#888;font-size:13px;margin-bottom:16px}
+.card{background:#171a21;border:1px solid #262b36;border-radius:10px;padding:14px;margin-bottom:16px}
+label{display:block;font-size:12px;color:#9aa4b2;margin:8px 0 4px}
+input,select,textarea{background:#0f1115;color:#e6e6e6;border:1px solid #2a3040;border-radius:6px;padding:6px 8px;font-size:13px}
+button{background:#2563eb;color:#fff;border:0;border-radius:6px;padding:6px 12px;cursor:pointer;font-size:13px}
+button.gray{background:#2a3040}.grid{display:flex;flex-wrap:wrap;gap:12px}
+.item{width:170px;background:#12151b;border:1px solid #262b36;border-radius:8px;padding:8px}
+.item img{width:100%;height:120px;object-fit:contain;background:#000;border-radius:6px}
+.item .tags{font-size:12px;color:#9aa4b2;margin:6px 0}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+</style></head><body>
+<h1>表情包</h1><div class="sub">本地/远程表情库管理；AI 聊天会按情绪自动挑图</div>
+<div class="card">
+  <div class="row">
+    <input type="file" id="file" accept="image/*">
+    <select id="emotion">
+      <option>开心</option><option>难过</option><option>生气</option><option>害羞</option>
+      <option>无语</option><option>惊讶</option><option>安慰</option><option>期待</option>
+      <option>困</option><option>晚安</option><option>吃饭</option><option>摸鱼</option>
+    </select>
+    <input id="contexts" placeholder="场景标签，逗号分隔（可空）" style="width:220px">
+    <button onclick="upload()">上传</button>
+    <button class="gray" onclick="remoteTest()">测试远程库</button>
+  </div>
+  <div id="msg" class="sub"></div>
+</div>
+<div id="stats" class="sub"></div>
+<div class="grid" id="list"></div>
+<script>
+function csrf(){const m=document.cookie.match(/(?:^|; )qixin_csrf=([^;]+)/);return m?decodeURIComponent(m[1]):''}
+function api(path,opts){opts=opts||{};const h=opts.headers||{};if((opts.method||'GET')!=='GET')h['X-CSRF-Token']=csrf();opts.headers=h;return fetch('/api/plugin/ai-sticker/http'+path,opts).then(r=>r.json())}
+function say(t){document.getElementById('msg').textContent=t}
+async function load(){
+  const [d,s]=await Promise.all([api('/list'),api('/stats')]);
+  const stats=document.getElementById('stats');
+  stats.textContent=`本地 ${s.total} 张 · 远程 ${s.remote?'已启用 '+s.remote_url:'未启用'}`;
+  const box=document.getElementById('list');box.innerHTML='';
+  for(const st of d.stickers||[]){
+    const el=document.createElement('div');el.className='item';
+    el.innerHTML=`<img src="/api/plugin/ai-sticker/http/image?id=${encodeURIComponent(st.id)}">
+      <div class="tags">${st.emotion||''} · ${(st.contexts||[]).join('/')}</div>
+      <div class="row"><button class="gray" data-id="${st.id}" onclick="del(this.dataset.id)">删除</button></div>`;
+    box.appendChild(el);
+  }
+}
+function upload(){
+  const f=document.getElementById('file').files[0];if(!f){say('先选图片');return}
+  const rd=new FileReader();
+  rd.onload=async()=>{
+    const emotion=document.getElementById('emotion').value;
+    const contexts=document.getElementById('contexts').value.split(/[,，\s]+/).filter(Boolean);
+    say('上传中...');
+    const r=await api('/upload',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({data_url:rd.result,emotion,contexts})});
+    say(r.ok?(r.duplicate?'已存在':(r.remote?'已存远程库':'已存本地')):('失败: '+(r.error||'')));
+    load();
+  };
+  rd.readAsDataURL(f);
+}
+async function del(id){if(!confirm('删除？'))return;await api('/delete',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id})});load()}
+async function remoteTest(){say('测试中...');const r=await api('/remote/test',{method:'POST'});say(r.ok?'远程库可用':'远程库不可用: '+(r.error||r.status||''))}
+load();
+</script></body></html>

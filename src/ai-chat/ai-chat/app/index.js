@@ -1460,6 +1460,13 @@ serve({
 
     const cleaned = text.replace(/^@\S+\s*/, '').trim() || text
     const images = imageURLsOf(session)
+    // 水群水到这条消息：图交给表情包插件学习（私聊由 ai-sticker 自己收）
+    if (session.chat_type === 'group' && !session.mentioned && images.length) {
+      for (const u of images.slice(0, 2)) {
+        toDataURL(u).then((d) => host.capability('sticker.learn', { data_url: d, source: 'water' }))
+          .catch(() => {})
+      }
+    }
     lastTrigger.set(session.chat_type + ':' + session.chat_id, Date.now())
     host.log('info', 'H5 进入 respond images=' + images.length)
 
