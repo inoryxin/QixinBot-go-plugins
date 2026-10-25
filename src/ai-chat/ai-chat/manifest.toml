@@ -352,15 +352,6 @@ default = ""
 hint = "群号用逗号或 | 分隔；不影响被 @ 时回复"
 
 [[settings]]
-key = "steal_image_pct"
-label = "群聊纯图片偷图概率（%）"
-type = "number"
-default = 30
-min = 0
-max = 100
-hint = "纯图片消息不会水群回复，只按这个概率静默收藏；同样受 water_groups 群限制"
-
-[[settings]]
 key = "sticker_pct"
 label = "回复附带表情包的概率（%）"
 type = "number"
