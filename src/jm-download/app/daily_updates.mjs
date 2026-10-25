@@ -32,7 +32,6 @@ let deps = {
   dataRoot: () => '.',
   client: () => engine.createClient({ fetchImpl: globalThis.fetch, timeoutMs: () => 30000 }),
   warn: () => {},
-  pythonPath: () => '',
 }
 
 /** 由 index.js 注入运行环境。必须在第一次使用前调用。 */
@@ -311,7 +310,7 @@ let cachedPython = null
 function resolvePythonExe() {
   if (cachedPython) return cachedPython
   try {
-    const found = findPython(String(deps.pythonPath() || '').trim())
+    const found = findPython()
     cachedPython = found.ok ? { exe: found.exe } : { exe: 'python', error: found.error }
   } catch (error) {
     cachedPython = { exe: 'python', error: String(error?.message ?? error) }

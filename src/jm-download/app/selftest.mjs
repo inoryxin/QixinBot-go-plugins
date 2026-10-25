@@ -22,7 +22,9 @@ import { createZip, buildZipName } from './zip.js'
 import { configure as configureDaily, renderDigestImage, renderAlbumImage } from './daily_updates.mjs'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
-const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'jm-selftest-'))
+// 临时目录放在工作目录下：有的环境（容器/沙箱）把 %TEMP% 设成只读，
+// 子进程 Python 往系统临时目录写图会 Permission denied，白跑一遍自检。
+const TMP = fs.mkdtempSync(path.join(process.cwd(), '.selftest-tmp-'))
 
 let pass = 0
 const failures = []
@@ -48,13 +50,17 @@ function run(name, fn) {
 }
 
 function py(script, args = [], input = undefined) {
-  return spawnSync(script, args, {
+  const r = spawnSync(script, args, {
     encoding: 'utf8',
     timeout: 120000,
     windowsHide: true,
     env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' },
     input,
   })
+  if (r.status !== 0 && process.env.JM_SELFTEST_DEBUG) {
+    console.error('[py fail]', script, JSON.stringify(args.slice(0, 2)), '\n', String(r.stderr || '').slice(0, 3000))
+  }
+  return r
 }
 
 // ── 1. 纯函数 ──────────────────────────────────────────────────────────────

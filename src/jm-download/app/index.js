@@ -121,7 +121,6 @@ function cfg() {
     localReuseDays: num(c.localReuseDays, 30, 0, 3650),
     keepDays: num(c.keepDays, 7, 0, 365),
     groupFileKeepDays: num(c.groupFileKeepDays, 0, 0, 365),
-    pythonPath: String(c.pythonPath ?? '').trim(),
     progress: boolv(c.progress, true),
     translateTitles: boolv(c.translateTitles, true),
     translateModel: String(c.translateModel ?? '').trim(),
@@ -767,9 +766,10 @@ function detectWorker(force = false) {
   const c = cfg()
   if (!force && workerCache.result && Date.now() - workerCache.at < 60000) return workerCache.result
   const result = c.restore || c.outputFormat === 'pdf'
-    ? pdfBridge.detect(c.pythonPath)
+    ? pdfBridge.detect()
     : { ok: false, error: '未启用还原/PDF' }
   workerCache = { at: Date.now(), result }
+  if (result?.note) log(result.note)
   return result
 }
 
@@ -2296,7 +2296,6 @@ serve({
       dataRoot: () => downloadRoot(),
       client: () => client(),
       warn: (msg) => warn(msg),
-      pythonPath: () => cfg().pythonPath,
     })
 
     await loadHistory()

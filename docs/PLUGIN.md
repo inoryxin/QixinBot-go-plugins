@@ -1832,7 +1832,7 @@ const ffmpeg = settings.ffmpegPath || process.env.FFMPEG_PATH || 'ffmpeg'
 use_tools = true
 ```
 
-效果：插件详情页（`/plugin/<id>/`）多出「可用工具」区块，列出所有插件声明的工具和参数，方便排查。
+效果：插件详情页（`/plugin/<id>/`）多出「可用工具」区块，**只列本插件声明的工具**和参数；全部插件的工具在 `/tools`（不在导航里，给 AI 类插件排查用）。
 
 **什么时候加**：这个插件会调 `host.list_tools`、把工具列表塞给模型（AI 聊天类）。
 

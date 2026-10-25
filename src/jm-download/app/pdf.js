@@ -25,25 +25,19 @@ const EXTRA_CANDIDATES = [
 
 /**
  * 找可用的 Python 解释器。
- * 顺序：插件设置里的路径 → 框架配置的 QIXIN_PYTHON → py 启动器 → PATH 里的
- * python → 常见安装位置。
  *
- * QIXIN_PYTHON 是管理员在控制台「运行时环境」里配的路径（data/runtime.json），
- * 框架会注入给每个插件；插件不该再写死 C:\... 或自己猜系统 PATH 的版本。
+ * 生产：框架会把运行时包 / 「运行时环境」里的解释器注入成 `QIXIN_PYTHON`。
+ * **只要它存在就只用它** —— 不去碰宿主机的 `py` / `python`，
+ * 保证 Pillow 版本和部署的运行时一致（Windows 13.0.0 / Linux 12.2.0）。
  *
- * ⚠️ 如果**用户明确配置了路径**但它不可用，回退时必须在返回值里标出来（configuredMissing），
- * 否则会出现"设置里填了个错路径，程序悄悄用了另一个解释器"这种查不出来的怪事。
+ * 开发（没装运行时包、也没配运行时环境）：才回退系统 Python，
+ * 并在返回值里标 `note` 说明"这只是开发环境"。
  */
-export function findPython(configured = '') {
+export function findPython() {
   const tried = [];
-  const conf = String(configured || '').trim();
   const fromHost = String(process.env.QIXIN_PYTHON || '').trim();
-  const candidates = [];
-  if (conf) candidates.push(conf);
-  if (fromHost && fromHost !== conf) candidates.push(fromHost);
-  candidates.push('py', 'python', ...EXTRA_CANDIDATES);
-
-  const configuredMissing = Boolean(conf) && !fs.existsSync(conf);
+  const strict = Boolean(fromHost);
+  const candidates = strict ? [fromHost] : ['py', 'python', ...EXTRA_CANDIDATES];
 
   for (const cand of candidates) {
     if (cand !== 'py' && cand !== 'python' && !fs.existsSync(cand)) {
@@ -53,14 +47,21 @@ export function findPython(configured = '') {
     const args = cand === 'py' ? ['-3', '-c', 'import sys;print(sys.version)'] : ['-c', 'import sys;print(sys.version)'];
     const r = spawnSync(cand, args, { encoding: 'utf8', timeout: 8000, windowsHide: true });
     if (r.status === 0 && String(r.stdout || '').trim()) {
-      const note = configuredMissing
-        ? `设置里填的 Python 路径不存在（${conf}），已自动改用 ${cand}`
-        : '';
-      return { ok: true, exe: cand, version: String(r.stdout).trim().split(/\s+/)[0], configuredMissing, note };
+      return {
+        ok: true,
+        exe: cand,
+        version: String(r.stdout).trim().split(/\s+/)[0],
+        note: strict ? '' : '未配置运行时（QIXIN_PYTHON），正在使用系统 Python —— 仅建议开发环境这样跑',
+        fromRuntime: strict,
+      };
     }
     tried.push(`${cand}（${r.error ? r.error.code || r.error.message : `exit ${r.status}`}）`);
   }
-  return { ok: false, configuredMissing, error: `没有找到可用的 Python：${tried.slice(0, 4).join('；')}` };
+
+  const hint = strict
+    ? 'QIXIN_PYTHON 指向的解释器不可用。请在控制台「依赖」页重新安装 Python 运行时，或检查「运行时环境」。'
+    : '没有找到可用的 Python。生产环境请安装 Python 运行时包（runtime-python-*）。';
+  return { ok: false, error: `${hint} 尝试过：${tried.slice(0, 4).join('；')}` };
 }
 
 /** 探测 Pillow 是否可用（用 worker 的 --check，最强一致性）。 */
@@ -99,12 +100,12 @@ export function checkSegmentation(pythonExe) {
 }
 
 /** 一次到位的探测：解释器 + Pillow。 */
-export function detect(configuredPython = '') {
-  const py = findPython(configuredPython);
-  if (!py.ok) return { ok: false, configuredMissing: py.configuredMissing, error: py.error };
+export function detect() {
+  const py = findPython();
+  if (!py.ok) return { ok: false, error: py.error };
   const worker = checkWorker(py.exe);
   if (!worker.ok) {
-    return { ok: false, python: py.exe, configuredMissing: py.configuredMissing, note: py.note, error: worker.error };
+    return { ok: false, python: py.exe, note: py.note, error: worker.error };
   }
   return {
     ok: true,
@@ -112,7 +113,6 @@ export function detect(configuredPython = '') {
     pillow: worker.pillow,
     webp: worker.webp,
     jpeg: worker.jpeg,
-    configuredMissing: py.configuredMissing,
     note: py.note,
   };
 }

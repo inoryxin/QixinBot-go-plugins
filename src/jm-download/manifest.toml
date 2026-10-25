@@ -8,17 +8,14 @@ permissions = ["onebot.write"]
 use_tools = true
 concurrency = "session"
 
-# 注意：**故意不写 [[requires]]**。
-# 框架对 python 依赖是按"目录里有没有这个包"检查的，看不到 pip --user 装到
-# %APPDATA%\Python\...\site-packages 的情况；写死 requires 会让"明明能 import PIL"
-# 的机器直接启用失败。PDF/信息图本来就是可选能力（缺了降级为只存原图），
-# 所以这里保持软依赖：启动后用 Python 探测，缺了在结果里说明。
-# 想要硬依赖可自行加：
-#   [[requires]]
-#   kind = "python"
-#   name = "Pillow"
-#   module = "PIL"
-#   version = ">=10"
+# 混合依赖：主进程 Node，竖切还原/PDF/信息图交给 Python 子进程（Pillow）。
+# Pillow 是平台原生包，**不打包进插件**；由运行时包提供（Windows 13.0.0 / Linux 12.2.0）。
+[[requires]]
+kind = "python"
+name = "Pillow"
+module = "PIL"
+version = ">=12,<14"
+hint = "运行时包自带 Pillow；没有的话去控制台「依赖」页装 Python 运行时（runtime-python-*）"
 
 # 用户平时直接发 jm123456 / 漫画链接，不带命令前缀，所以门禁不能强制前缀。
 [access]
@@ -294,12 +291,6 @@ hint = "走 llm.chat 能力；没配 LLM 时自动只做繁→简"
 [[settings]]
 key = "translateModel"
 label = "翻译用的模型（留空=llm 默认）"
-type = "string"
-default = ""
-
-[[settings]]
-key = "pythonPath"
-label = "Python 解释器路径（留空自动探测）"
 type = "string"
 default = ""
 

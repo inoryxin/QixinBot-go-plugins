@@ -78,7 +78,6 @@ copy packages\jm-download.anzu <框架目录>\plugins\
 | 每话最多页数 / 多章节 / 并发 | 500 / 开 / 4 | 防超长本打爆磁盘 |
 | 单次请求超时 / 报进度 | 30 秒 / 开 | 网络慢可调大；报进度 12 秒一条 |
 | 日文标题翻译 / 翻译模型 | 开 / 空 | 走 `llm.chat`；模型留空用 llm 默认 |
-| Python 解释器路径 | 空 | 留空自动探测（`py` → `python` → 常见安装位置） |
 | 下载走代理 | 空 | 如 `http://127.0.0.1:7890`，需要环境里有 undici |
 | 备用站点域名 | 空 | 一行/逗号一个，填了优先 |
 | 下载目录 | 空 | 留空用插件 `data/`；填绝对路径也行 |
@@ -105,28 +104,26 @@ copy packages\jm-download.anzu <框架目录>\plugins\
 
 ### Pillow 从哪来
 
-**manifest 里故意没写 `[[requires]]`**：框架的 python 依赖检查是看目录里有没有
-`PIL/`，看不到 `pip install --user` 装进 `%APPDATA%\Python\...\site-packages` 的情况；
-写死会让"明明能 import PIL"的机器启用失败。PDF/信息图是可选能力，缺了降级为只存原图，
-所以保持软依赖（启动时真实探测，`/支持PDF吗` 会说明）。
+manifest 里声明了硬依赖（混合依赖）：
 
-三种来源，按优先级：
-
-1. **Python 运行时包**（推荐）：控制台「依赖」页装 `runtime-python-<平台>-x64.anzu`，
-   自带 Python 3.12 + Pillow（Windows 13.0.0 / Linux 12.2.0），框架会把
-   `QIXIN_PYTHON` 注入给插件。
-2. **系统/用户 Python**：`pip install Pillow` 即可，插件按 `py`/`python` 探测。
-3. **插件自己的 `deps/python`**（不推荐，平台 wheel 会让包失去跨平台）：
-
-```powershell
-pip install --target <插件运行区>\deps\python Pillow
+```toml
+[[requires]]
+kind = "python"
+name = "Pillow"
+module = "PIL"
+version = ">=12,<14"
 ```
 
-> 想让插件**没 Pillow 就不许启用**，可以自己加硬依赖：
-> `[[requires]] kind = "python"`、`name = "Pillow"`、`module = "PIL"`。
+**不要往插件包里塞 Pillow**（平台 wheel 会让包失去跨平台，qixinpack 会拦 `.pyd`）。
+由运行时包提供：`runtime-python-<平台>-x64.anzu` 自带 Python 3.12 + Pillow
+（Windows 13.0.0 / Linux 12.2.0），装到控制台「依赖」页即可。
 
-Python 解释器优先级：插件设置 `pythonPath` → 框架「运行时环境」的 `QIXIN_PYTHON`
-→ `py` 启动器 → PATH 的 `python` → 常见安装位置。**不要写死 `C:\Python3xx`**。
+解释器只用**框架给的**：`QIXIN_PYTHON`（运行时包 / 「运行时环境」注入）。
+只要它存在，插件不会再去碰宿主机的 `py` / `python`；只有完全没配运行时
+（纯开发环境）才回退系统 Python，并在日志里标注"仅开发环境"。
+
+解释器**不提供设置项**：插件只认 `QIXIN_PYTHON`（运行时包 / 「运行时环境」）。
+要换解释器请在控制台「运行时环境」或运行时包里改，不要在每个插件里各配一份。
 
 ### 运行时环境（框架注入，不用自己猜路径）
 
@@ -167,6 +164,12 @@ data/plugins/jm-download/data/
 node app/selftest.mjs
 
 # 起本地环境（假 OneBot + 控制台 7801）
+# 用生产运行时（版本、Pillow 和线上一致；首次解压到缓存，之后复用）：
+..\..\..\bin\qixinpack.exe dev . -watch `
+  -runtime ..\..\..\data\runtime-packs\runtime-node-windows-x64.anzu `
+  -runtime ..\..\..\data\runtime-packs\runtime-python-windows-x64.anzu
+
+# 不传 -runtime 才会退回系统 PATH（只适合临时调试）
 ..\..\..\bin\qixinpack.exe dev . -watch
 
 # 打包（官方密钥）
