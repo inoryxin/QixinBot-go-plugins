@@ -1272,6 +1272,79 @@ if (!r?.ok) {
 3. 官方依赖由框架/官方插件维护，升级时调用方不用改
 4. 新增官方依赖要同时更新 `/deps` 页和本节表格
 
+## 6.1f 共享依赖 / 插件专属依赖
+
+框架支持两层依赖：
+
+```
+data/deps/python                共享 Python 依赖
+data/deps/node/node_modules     共享 Node 依赖
+<插件>/deps/python              插件专属（优先）
+<插件>/deps/node_modules        插件专属（优先）
+```
+
+Python 查找顺序：**插件专属 → 共享 → 标准库**；Node 的 `NODE_PATH` 同理。
+控制台「依赖」页可以直接安装、上传、查看共享和插件专属依赖。
+
+### 插件包只准打包跨平台依赖
+
+- 允许：`.py`、纯 JS、`*-py3-none-any.whl`（`none-any`）
+- 禁止：`.pyd` / `.so` / `.dll` / `.node`、平台 wheel（`win_amd64`、`manylinux` 等）
+- `qixinpack pack` 会直接报错：
+
+```
+不要打包平台相关依赖：deps/python/PIL/_imaging.cp312-win_amd64.pyd
+改成 [[requires]]，由运行时或安装时下载提供
+```
+
+平台相关的（Pillow、numpy、`@napi-rs/canvas`、sharp）由运行时包提供，插件不打包。
+
+### 官方运行时包（4 个）
+
+```
+runtime-node-windows-x64.anzu
+runtime-node-linux-x64.anzu
+runtime-python-windows-x64.anzu
+runtime-python-linux-x64.anzu
+```
+
+自带常用依赖：
+
+- Node：`@napi-rs/canvas`、`sharp`、`better-sqlite3`、`axios`、`cheerio`、`undici`、`dayjs`、`lodash` 等
+- Python：Pillow、numpy、psutil、lxml、cryptography、requests、httpx、aiohttp、bs4、PyYAML 等
+
+### 依赖声明
+
+```toml
+[[requires]]
+kind = "python"
+name = "Pillow"
+version = ">=10,<12"
+```
+
+- 共享/运行时里有满足的版本 → 直接用
+- 插件包里有纯 Python/JS 版本 → 用插件的
+- 都没有：
+  - 写了 `download = true` → 安装时下载当前平台版本到插件目录
+  - 没写 → 插件进入「安装失败」，管理员在「依赖」页手动补，**运行时不联网装包**
+
+```toml
+[[requires]]
+kind = "python"
+name = "opencv-python"
+version = "4.10.*"
+download = true
+hashes = ["sha256:..."]
+```
+
+### 管理员兜底
+
+插件没声明、启动报 `No module named 'xxx'` 时：
+
+1. 插件状态变成 `failed`，错误显示在「依赖」页
+2. 管理员可以选择 Python/Node、填包名版本，**装到该插件目录**
+3. 装完重载插件即可，不需要重新打包
+
 ## 6.2 共享数据
 
 插件可以把自己的一部分数据托管给框架，其他插件读。
@@ -3256,7 +3329,7 @@ app/index.js → app/node_modules（没有）→ my-plugin/node_modules（有）
 
 ### Python 依赖：以 Pillow 为例
 
-装进插件的 `deps/python/`，框架会自动把该目录加进 `PYTHONPATH`：
+先看官方共享依赖表；没有的再装进插件 `deps/python/`。插件目录会优先于共享目录加进 `PYTHONPATH`：
 
 ```powershell
 cd my-plugin
