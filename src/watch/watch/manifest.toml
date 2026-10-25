@@ -58,9 +58,3 @@ label = "动作词（逗号分隔）"
 type = "string"
 default = "在干嘛,干嘛呢,在不在,在吗,干啥呢,状态,怎么样"
 
-[[tools]]
-name = "get_qixin_status"
-description = "查询祈歆（许雪然）当前是否在线、状态和正在使用的设备。用户问「祈歆在干嘛/雪然在线吗/她睡了没」时调用。"
-
-[tools.parameters]
-type = "object"

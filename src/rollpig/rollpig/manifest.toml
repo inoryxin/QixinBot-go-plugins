@@ -26,9 +26,3 @@ id = "rollpig.search"
 usage = "找猪 <关键词>"
 description = "搜索小猪；找猪 -i <ID> 按 ID"
 
-[[tools]]
-name = "roll_pig"
-description = "随机抽一只小猪图片。用户说「抽只小猪」「来只猪」时调用。"
-
-[tools.parameters]
-type = "object"
