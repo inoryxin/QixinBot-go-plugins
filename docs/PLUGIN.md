@@ -1310,6 +1310,34 @@ runtime-python-linux-x64.anzu
 - Node：`@napi-rs/canvas`、`sharp`、`better-sqlite3`、`axios`、`cheerio`、`undici`、`dayjs`、`lodash` 等
 - Python：Pillow、numpy、psutil、lxml、cryptography、requests、httpx、aiohttp、bs4、PyYAML 等
 
+### 运行时包格式
+
+运行时包也是 `.anzu`，用 `kind = "runtime"` 区分：
+
+```toml
+id = "node-24.18.0-windows-x64"
+name = "Node.js 24.18.0"
+version = "24.18.0"
+kind = "runtime"
+exec = ["node.exe"]
+
+[runtime]
+kind = "node"          # node / python
+version = "24.18.0"
+platform = "windows-x64"
+```
+
+包里放 `node.exe`、`node_modules/` 或 `python.exe`、`Lib/`、共享依赖等。
+上传到「插件」页或「依赖」页都行，安装器识别 `kind="runtime"` 后：
+
+```
+data/runtimes/node/24.18.0/windows-x64/
+```
+
+- 当前平台匹配 → 自动设为框架运行时
+- 平台不匹配 → 存着但标记不可用，不覆盖当前运行时
+- 不会出现在插件列表
+
 ### 依赖声明
 
 ```toml
