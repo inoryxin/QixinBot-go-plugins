@@ -1564,6 +1564,7 @@ if (r?.ok) reply(r.data.text)
 # manifest.toml
 [[requires]]
 kind = "plugin"
+name = "画布服务"
 value = "canvas"
 ```
 
@@ -1623,6 +1624,74 @@ canvas 服务**内置霞鹜文楷**（OFL-1.1 开源协议，13MB），不指定
 
 **不想用霞鹜文楷**？可以在 canvas 服务里换掉 `assets/fonts/` 下的文件，
 或者插件自己指定 `font`。
+
+### 最小完整例子
+
+```js
+import { serve, host } from '../_sdk/qixin.mjs'
+
+function chatOf(session) {
+  return { account: session.account, chat_type: session.chat_type, chat_id: session.chat_id }
+}
+
+serve({
+  async handle_message({ session }) {
+    if (session.text !== '画个卡片') return { handled: false }
+    const r = await host.capability('canvas.render', {
+      width: 480,
+      height: 320,
+      background: '#141821',
+      format: 'image/jpeg',
+      quality: 88,
+      ops: [
+        { type: 'text', text: '你好', x: 32, y: 70, size: 42, bold: true, color: '#ffffff' },
+        { type: 'text', text: '这是一张用画布服务生成的卡片', x: 32, y: 130, size: 22, color: '#c7cfdd', wrap: 416, maxLines: 3 },
+      ],
+    })
+    if (!r?.ok) {
+      await host.reply(chatOf(session), '画图失败：' + (r?.error || '未知错误'))
+      return { handled: true }
+    }
+    await host.reply(chatOf(session), [
+      { type: 'image', data: { file: `base64://${r.data.image}` } },
+    ])
+    return { handled: true }
+  },
+})
+```
+
+### 返回值和错误
+
+```js
+{ ok: true, data: { image: '<base64>', format: 'image/png' } }
+{ ok: false, error: '画布渲染失败: ...' }
+```
+
+- `image` 是**不带 `data:` 前缀**的 base64，发送时拼 `base64://`
+- `format` 默认 `image/png`；要小图就传 `image/jpeg` + `quality`
+- 画布服务不可用/渲染失败时 `ok:false`，调用方要自己兜底（发文字或原图）
+
+### op 字段细节
+
+- 坐标原点在左上角，`x/y` 就是左上角；文字默认 `baseline: 'alphabetic'`
+- `text` 的 `align` 支持 `left/center/right`；`wrap` 是**像素宽度**，`maxLines: 0` 表示不限
+- `text` 不写 `font` 用内置霞鹜文楷；`bold: true` 加粗
+- `image` 的 `round` 是圆角半径；`w/h` 不写用原图尺寸
+- `image.src` 支持 `http(s)` / `base64://` / `data:` / 本地绝对路径；远程图由画布服务统一拉取
+- `rect` 的 `radius` 圆角，`fill` 填充，`stroke` 描边
+- `ellipsis` 超宽自动截断加 `…`，适合标题栏
+
+### 布局建议
+
+先用 `canvas.probe` 量图，再算高度：
+
+```js
+const probe = await host.capability('canvas.probe', { urls: [coverUrl] })
+const size = probe?.data?.sizes?.[0]
+const imageH = Math.min(560, Math.max(320, Math.round((size.height / size.width) * 760)))
+```
+
+然后 `canvas.render` 的 `height` 用 `imageH + 文字区高度`，`image` op 按 `imageH` 画。
 
 ### 换平台
 
