@@ -362,14 +362,14 @@ deps/
 | `deps/python` | `PYTHONPATH` |
 | `deps/bin` | `PATH` 末尾 |
 
-**所以 Node 和 Python 用同一套目录约定**，只是子目录不同。
+**所以 Node 和 Python 用同一套目录约定**，只是子目录不同。平台原生依赖不要放这里，见 6.1f。
 
 ```bash
-# Node
-npm install --omit=dev --prefix deps/node_modules <包名>
+# Node（只装纯 JS；--prefix deps 会生成 deps/node_modules）
+npm install --omit=dev --prefix deps <包名>
 
-# Python
-pip install -t deps/python <包名>
+# Python（只装 py3-none-any 纯 Python 包）
+pip install --target deps/python --only-binary=:all: <包名>
 ```
 
 ---
