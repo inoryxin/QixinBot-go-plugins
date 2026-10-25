@@ -492,7 +492,9 @@ OneBot 11 原生格式，不重新发明：
 }
 ```
 
-`type` ∈ `string | password | number | boolean | select | path`。
+`type` ∈ `string | text | textarea | password | number | bool | boolean | select | path`。
+
+`text` / `textarea` 渲染成多行文本框；值仍然是 string。
 
 ---
 

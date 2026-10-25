@@ -472,10 +472,12 @@ parameters = { type = "object", properties = { city = { type = "string" } }, req
 | type | 控件 |
 |---|---|
 | `string` | 单行文本 |
+| `text` / `textarea` | 多行文本 |
 | `number` | 数字框（可配 min/max） |
 | `bool` 或 `boolean` | **复选框**（两种写法都认） |
 | `select` | 下拉框（配合 `options` / `option_labels`） |
 | `password` | 密码框 |
+| `path` | 单行文本框（路径） |
 
 写错的类型不会报错，只会变成文本框——框架现在会在加载时打 warn：
 `设置项类型未知，会显示成文本框 plugin=xxx key=yyy`。
@@ -588,7 +590,9 @@ default = "celsius"
 | type | 渲染 | 存的值 |
 |---|---|---|
 | `string` | 文本框 | string |
-| `password` | 密码框 | string（日志脱敏） |
+| `text` / `textarea` | 多行文本域 | string |
+| `password` | 密码框 |
+| `path` | 单行文本框（路径） | string（日志脱敏） |
 | `number` | 数字框（支持 `min`/`max`） | float64 |
 | `boolean` | 复选框 | bool |
 | `select` | 下拉（必须有 `options`） | string |
@@ -1604,6 +1608,53 @@ deps/python/.../*.pyd           → 拒绝
 
 所以混合依赖插件仍然可以**一份包跨平台**，平台差异由两边的运行时包负责。
 
+## 6.1h 数据放哪、什么时候会丢
+
+这是插件最容易踩的坑：**把要持久化的东西放在模块变量里，重启就没了**。
+
+| 数据 | 存在哪 | 重启 | 升级插件 | 禁用/重载 | 删除插件 |
+|---|---|---|---|---|---|
+| `[[settings]]` | `data/plugins/<id>/data/settings.json` | ✅ | ✅ | ✅ | 备份到 `removed-plugins` |
+| `host.storage` | 框架存储（SQLite `data/plugins.db` / JSON） | ✅ | ✅ | ✅ | ✅（按插件 id 保留？见下） |
+| `[[shared]]` | `data/qixin.db` / `data/shared.json` | ✅ | ✅ | ✅ | ❌ |
+| 插件自己写的 `data/` 文件 | `data/plugins/<id>/data/` | ✅ | ✅ | ✅ | 备份到 `removed-plugins` |
+| 模块变量 / `setInterval` | 进程内存 | ❌ | ❌ | ❌ | ❌ |
+
+ > 删除插件时，`data/plugins/<id>/data/` 会移动到 `data/removed-plugins/<id>-<时间>/data/`，不会直接删；
+> 重装插件不会自动恢复，需要手动把备份拷回。代码、依赖、`[[shared]]` 会清掉。
+
+### 正确初始化
+
+```js
+let settings = {}
+let state = null
+
+async function initialize({ settings: s }) {
+  settings = s || {}
+  state = await host.storage.get('state')      // 先读
+  if (!state) {                                 // 只有不存在才写默认
+    state = { nextAt: 0 }
+    await host.storage.set('state', state)
+  }
+  return { api_version: '1.0' }
+}
+```
+
+**不要**在 `initialize` 里无条件 `set` 默认值——那会把用户上次保存的状态冲掉。
+
+### 生命周期
+
+- `initialize`：读设置、读状态、起定时器
+- `set_settings`：合并新值；需要时重排定时器
+- `shutdown`：清 `setInterval`、杀子进程、落盘
+- 禁用/重载：进程停止；`host.storage`、`data/`、`[[shared]]` 都保留
+- 删除：代码/依赖/共享 key 清理；`data/` 移到 `data/removed-plugins/<id>-<时间>/`
+
+### 共享数据
+
+共享值只在**删除插件**时清；重启、重载、禁用都不会丢。
+不要把"每个群独立"的东西塞进一个共享字符串然后覆盖整个对象——用带 chat key 的 JSON，或直接用 `host.storage`。
+
 ## 6.2 共享数据
 
 插件可以把自己的一部分数据托管给框架，其他插件读。
@@ -1622,6 +1673,7 @@ default = "小鲸鱼"
   写的时候用完整 key（`<插件id>.<key>`），别只写 `key`
 - 存在框架统一存储：SQLite 模式是 `data/qixin.db`，JSON 模式是 `data/shared.json`
 - **重启、重载、禁用插件都不会丢**；只有删除插件才清掉它的共享 key
+- 共享值写入会同时落盘到当前存储后端，不是只写内存
 
 ```js
 // AI 插件：读自己的
@@ -1838,7 +1890,7 @@ use_tools = true
 
 效果：插件详情页（`/plugin/<id>/`）多出「可用工具」区块，**只列本插件声明的工具**和参数；全部插件的工具在 `/tools`（不在导航里，给 AI 类插件排查用）。
 
-**什么时候加**：这个插件会调 `host.list_tools`、把工具列表塞给模型（AI 聊天类）。
+**什么时候加**：这个插件会调 `host.listTools()`、把工具列表塞给模型（AI 聊天类）。
 
 **什么时候不加**：普通指令插件。不加就看不到工具面板，页面更干净。
 
@@ -2196,7 +2248,7 @@ env = { MY_API = "xxx" }
 
 1. **复制一份**到自己的 `assets/`（素材不大时最简单）
 2. **用能力**：让对方提供 `xxx.asset` 能力
-3. **用共享数据**：`host.shared.set('图标', base64)`（只适合几十 KB）
+3. **用共享数据**：`host.sharedSet('my-plugin.icon', base64)`（key 要先在 `[[shared]]` 声明，只适合几十 KB）
 
 ### 大小限制
 
@@ -3461,7 +3513,7 @@ setInterval(() => {
 | `call_tool` | 8s |
 | `ping` | 3s |
 
-长任务先回执，后台跑完再 `host.send_message`。
+长任务先回执，后台跑完再 `host.sendMessage`。
 
 ### 7.6 禁止
 
@@ -3832,7 +3884,7 @@ exec = ["app/weather.exe"]
 | 界面文案写英文 | 群友看不懂 | 给人看的用中文，标识符用英文 |
 | 列表输入用逗号分隔 | 和别的插件不一致 | 统一用 `|` |
 | 用 `require_prefix = false` 自己解析自然语言 | 正则覆盖不全 | 交给 AI 工具 |
-| 插件里读别人的配置文件 | 耦合、容易坏 | `host.shared.get` 或能力调用 |
+| 插件里读别人的配置文件 | 耦合、容易坏 | `host.sharedGet` 或能力调用 |
 
 ---
 
