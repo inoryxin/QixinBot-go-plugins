@@ -1,6 +1,6 @@
 id = "jm-download"
 name = "禁漫下载"
-version = "1.1.0"
+version = "1.2.0"
 apiVersion = "1.x"
 exec = ["node", "app/index.js"]
 description = "群友发漫画 ID 就后台下载整本、还原竖切、合成 PDF、打包上传；附今日JM/更新JM 信息图、按群开关"
@@ -274,12 +274,6 @@ type = "number"
 default = 30
 min = 5
 max = 300
-
-[[settings]]
-key = "progress"
-label = "在群里报进度"
-type = "boolean"
-default = true
 
 [[settings]]
 key = "translateTitles"

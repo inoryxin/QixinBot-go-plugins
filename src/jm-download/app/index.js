@@ -34,7 +34,6 @@ import {
   loadDigestItems,
   buildDigestFromState,
   renderDigestImage,
-  renderAlbumImage,
   resetPythonCache,
   cleanTitle,
   fetchSiteCover,
@@ -121,7 +120,6 @@ function cfg() {
     localReuseDays: num(c.localReuseDays, 30, 0, 3650),
     keepDays: num(c.keepDays, 7, 0, 365),
     groupFileKeepDays: num(c.groupFileKeepDays, 0, 0, 365),
-    progress: boolv(c.progress, true),
     translateTitles: boolv(c.translateTitles, true),
     translateModel: String(c.translateModel ?? '').trim(),
     proxy: String(c.proxy ?? '').trim(),
@@ -135,6 +133,7 @@ function downloadRoot() {
 }
 
 const log = (message, fields) => host.log('info', message, fields)
+const debug = (message, fields) => host.log('debug', message, fields)
 const warn = (message, fields) => host.log('warn', message, fields)
 
 // ───────────────────────── 繁→简 / 日语标题翻译 ─────────────────────────
@@ -317,8 +316,9 @@ async function sendImageWithText(chat, text, imagePath) {
     return true
   } catch (error) {
     warn(`发图失败：${error?.message ?? error}`)
-    return false
   }
+  // 图实在发不出去（协议端限制/编码问题）也不能把文字吞掉
+  return sendText(chat, text)
 }
 
 // ───────────────────────── 群白名单 / 权限 ─────────────────────────
@@ -791,11 +791,17 @@ function client() {
 
 // ───────────────────────── 下载整本 ─────────────────────────
 
-async function downloadAlbum({ albumId, onProgress, control }) {
+async function downloadAlbum({ albumId, onProgress, control, onAlbum }) {
   const c = cfg()
   const task = { control }
   const api0 = client()
   const album = await api0.albumInfo(albumId)
+  // 拿到本子信息就先发第一条消息（封面+名字），再开始下载
+  try {
+    if (typeof onAlbum === 'function') await onAlbum(album)
+  } catch (error) {
+    warn(`首条消息发送失败（继续下载）：${error?.message ?? error}`)
+  }
 
   const chapters = album.series.length
     ? (c.multiChapter ? album.series : album.series.slice(0, 1))
@@ -904,28 +910,38 @@ async function runJob(job) {
   const chat = job.chat || chatOfKey(chatKey)
   const say = (text) => sendText(chat, text)
 
-  /** 单本简介信息卡：图 + 一句话说明。 */
-  const sendAlbumCard = async (imagePath) => {
-    try {
-      return await sendImageWithText(chat, `📥 JM${albumId} 的简介`, imagePath)
-    } catch (error) {
-      warn(`简介卡片发送失败：${error?.message ?? error}`)
-      return false
+  /**
+   * 第 1 条消息：漫画名字 + 封面。
+   * 封面优先用 worker 生成的「已还原」封面（cover.jpg）；
+   * 没有就用站点官方封面；再退回本地第一页（可能是竖切打乱的，仅兜底）。
+   */
+  const sendTitleWithCover = async (name, id) => {
+    const title = toSimplified(name) || `JM${id}`
+    const dir = await albumDirOf(id)
+    const restoredCover = dir ? path.join(dir, 'cover.jpg') : ''
+    let cover = restoredCover && fs.existsSync(restoredCover) ? restoredCover : ''
+    if (!cover) {
+      try {
+        cover = (await fetchSiteCover(String(id))) || ''
+      } catch {
+        cover = ''
+      }
     }
+    if (!cover && dir) {
+      try {
+        cover = firstPageImage(dir)
+      } catch {
+        cover = ''
+      }
+    }
+    const text = `「${title}」JM${id}`
+    if (cover) await sendImageWithText(chat, text, cover)
+    else await say(text)
   }
 
   await waitIfPaused(job)
   await loadHistory()
   await fsp.mkdir(DATA_DIR, { recursive: true })
-
-  let lastReport = 0
-  const report = (text) => {
-    if (!c.progress) return
-    const now = Date.now()
-    if (now - lastReport < 12000) return
-    lastReport = now
-    void say(text)
-  }
 
   const record = { id: albumId, chatKey, who: job.who, ok: false, stage: 'download', startedAt: Date.now() }
 
@@ -959,24 +975,19 @@ async function runJob(job) {
           failed: [],
           scrambleId: 0,
         }
-      : await (async () => {
-          await say(`🔍 开始处理 JM${albumId}…`)
-          return downloadAlbum({
-            albumId,
-            control: job.control,
-            onProgress: (p) => {
-              if (p.stage === 'download' && p.total > 0) {
-                report(`📥 下载中：第 ${p.chapter}/${p.chapters} 话，已存 ${p.ok}/${p.total} 张（失败 ${p.fail}）`)
-              }
-            },
-          })
-        })()
+      : await downloadAlbum({
+          albumId,
+          control: job.control,
+          // 第 1 条：封面+名字；第 2 条：少女祈祷中...
+          onAlbum: async (album) => {
+            await sendTitleWithCover(album.name, album.id)
+            await say('少女祈祷中...')
+          },
+        })
 
-    if (cachedPdf) await say(`📦 JM${albumId} 命中最近 ${c.keepHours} 小时内的 PDF，直接重新发送，不重新下载。`)
-    else if (localArt) {
-      await say(localArt.kind === 'pdf'
-        ? `📦 JM${albumId} 本地已经有这本（${(localArt.bytes / 1048576).toFixed(1)} MB），直接发送，不重新下载。`
-        : `📦 JM${albumId} 本地已经有这本的图片（${(localArt.files || []).length} 张），直接发送，不重新下载。`)
+    if (reused) {
+      await sendTitleWithCover(dl.album.name, dl.album.id)
+      await say('少女祈祷中...')
     }
     record.title = toSimplified(dl.album.name)
     record.description = toSimplified(dl.album.description || '')
@@ -1063,7 +1074,6 @@ async function runJob(job) {
       record.pdf = { bytes: pdfInfo.bytes, pages: pdfInfo.pages, pagesOk: pdfInfo.pagesOk, restored: pdfInfo.restored, cached: true }
     } else if (wantPdf && worker.ok) {
       record.stage = 'pdf'
-      await say(`🖼 下载完成（${dl.totals.ok} 张），正在${c.restore ? '还原竖切并' : ''}合成 PDF…`)
       const pdfName = `${engine.sanitizeSegment(`JM${dl.album.id}-${dl.album.name}`, `JM${dl.album.id}`)}.pdf`
       const outPath = path.join(dl.albumDir, pdfName)
 
@@ -1093,6 +1103,7 @@ async function runJob(job) {
         quality: c.pdfQuality,
         max_dim: c.pdfMaxDim,
         parts: wantParts,
+        cover_output: path.join(dl.albumDir, 'cover.jpg'),
         chapters: dl.chapters.map((ch) => ({ name: ch.name, pages: ch.pages, aid: ch.id })),
       }
       const res = await pdfBridge.runTask({
@@ -1100,8 +1111,9 @@ async function runJob(job) {
         task,
         timeoutMs: Math.max(180000, dl.totals.total * 4000),
         onProgress: (p) => {
-          if (p.stage === 'descramble') report(`🎨 还原中：${p.done}/${p.total}（失败 ${p.fail}）`)
-          else if (p.stage === 'pdf') report(p.total > 1 ? `📄 正在写入 PDF（${p.done}/${p.total} 卷）…` : '📄 正在写入 PDF…')
+          // 群里只保留 4 条固定消息，过程进度写日志
+          if (p.stage === 'descramble' && p.done % 50 === 0) debug(`还原进度 ${p.done}/${p.total}`)
+          else if (p.stage === 'pdf') debug(`PDF 分卷 ${p.done}/${p.total}`)
         },
       })
       if (res.ok) {
@@ -1148,7 +1160,6 @@ async function runJob(job) {
         }
       }
       if (!zipExistsFresh()) {
-        await say(zipPassword ? '🗜 正在打包成加密压缩包…' : '🗜 正在打包成压缩包…')
         const zr = await createZip({ outPath: zipPath, entries, password: zipPassword })
         if (!zr.ok) throw new Error(`压缩包生成失败：${zr.error}`)
         log(`JM${dl.album.id} 已打包：${zipName}（${humanSize(zr.bytes)}，加密=${zr.encrypted ? '是' : '否'}，${zr.entries} 个文件）`)
@@ -1195,30 +1206,31 @@ async function runJob(job) {
     if (!deliverPath) record.stage = 'images'
     ensureAlive(job)
 
-    // ③ 上传
+    // ③ 第 3 条：下载完成 / 正在上传（页数 · 大小 · 密码）；第 4 条是文件本身
     const dest = resolveUploadTarget(c, chatKey, job.kind)
+    const pageCount = pdfInfo ? pdfInfo.pages : dl.totals.ok
+    const willUpload = c.uploadMode !== 'off' && Boolean(dest) && Boolean(deliverPath)
+    if (deliverPath) {
+      const finalBytes = fs.statSync(deliverPath).size
+      const pwdNote = record.zip?.encrypted ? `，解压密码：${record.zip.password}` : ''
+      await say(willUpload
+        ? `下载完成，正在上传：${pageCount} 页 · ${humanSize(finalBytes)}${pwdNote}`
+        : `下载完成：${pageCount} 页 · ${humanSize(finalBytes)}${pwdNote}（已保存到本地）`)
+    } else {
+      await say(`下载完成：${dl.totals.ok} 张（未生成 PDF${record.pdfError ? `：${record.pdfError}` : ''}，已保存到本地）`)
+    }
+
     let uploadNote = ''
     let deliveryConfirmed = false
-    if (c.uploadMode === 'off') {
-      deliveryConfirmed = true
-      uploadNote = '（当前设置不上传文件，图片已存在本地）'
-    } else if (!dest) {
-      uploadNote = '（当前设置不上传文件，图片已存在本地）'
+    if (c.uploadMode === 'off' || !dest) {
+      deliveryConfirmed = Boolean(deliverPath) || c.uploadMode === 'off'
     } else if (!deliverPath) {
-      uploadNote = '⚠️ 没有生成可上传的文件（PDF 不可用），图片已存在本地'
+      deliveryConfirmed = false
     } else {
       record.stage = 'upload'
       const size = fs.statSync(deliverPath).size
       const limit = c.maxUploadMB * 1024 * 1024
       if (deliverParts.length > 1) {
-        const totalBytes = deliverParts.reduce((a, p) => {
-          try {
-            return a + fs.statSync(p).size
-          } catch {
-            return a
-          }
-        }, 0)
-        uploadNote = `📦 共 ${humanSize(totalBytes)}，已按页分成 ${deliverParts.length} 卷上传（**每卷都能单独打开**）`
         let sent = 0
         for (const part of deliverParts) {
           const r = await uploadFile({
@@ -1229,21 +1241,17 @@ async function runJob(job) {
             deliveryConfirmed = true
             rememberGroupFile(dest, r.fileId, path.basename(part))
           } else {
-            uploadNote += `\n第 ${sent + 1} 卷上传失败：${r.error}`
+            uploadNote = `⚠️ 第 ${sent + 1}/${deliverParts.length} 卷上传失败：${r.error}`
             break
           }
         }
-        if (sent === deliverParts.length) {
-          deliveryConfirmed = true
-          uploadNote += '，全部成功'
-        }
       } else if (size > limit && !record.zip) {
         if (c.rejectOversize) {
-          uploadNote = `⚠️ 文件 ${humanSize(size)} 超过单文件上限 ${c.maxUploadMB} MB，按设置没有上传（可调大上限或允许分卷）`
+          uploadNote = `⚠️ 文件 ${humanSize(size)} 超过单文件上限 ${c.maxUploadMB} MB，没有上传（可调大上限或允许分卷）`
         } else {
           const parts = splitForUpload(deliverPath, limit)
-          uploadNote = `⚠️ 单文件 ${humanSize(size)} 超过 ${c.maxUploadMB} MB，已按**字节**切成 ${parts.length} 卷 —— `
-            + '这些卷**不是完整 PDF，必须合并后才能打开**。建议把「单文件上限」调大，或重新下载（会改按页分卷）。'
+          uploadNote = `⚠️ 单文件 ${humanSize(size)} 超过 ${c.maxUploadMB} MB，已按字节切成 ${parts.length} 卷 —— `
+            + '必须合并后才能打开。建议调大「单文件上限」，或重新下载（会改按页分卷）。'
           let sent = 0
           for (const part of parts) {
             const r = await uploadFile({
@@ -1258,10 +1266,6 @@ async function runJob(job) {
               break
             }
           }
-          if (sent === parts.length) {
-            deliveryConfirmed = true
-            uploadNote += '，全部成功'
-          }
         }
       } else {
         // 压缩包超限也走这里：**不按字节切** —— 切开的 zip 解不开
@@ -1272,11 +1276,9 @@ async function runJob(job) {
         if (r.ok) {
           deliveryConfirmed = true
           rememberGroupFile(dest, r.fileId, deliverName || path.basename(deliverPath))
-          uploadNote = dest.startsWith('group:')
-            ? `📎 已上传到本群群文件：${deliverName || path.basename(deliverPath)}（${humanSize(size)}）${r.note ? `\nℹ️ ${r.note}` : ''}`
-            : `📎 已发送文件：${deliverName || path.basename(deliverPath)}（${humanSize(size)}）`
+          if (r.note) uploadNote = `ℹ️ ${r.note}`
           if (zipTooBig) {
-            uploadNote = `⚠️ 压缩包 ${humanSize(size)} 超过单文件上限 ${c.maxUploadMB} MB，已按**整包**上传（没有切分）。\n${uploadNote}`
+            uploadNote = `⚠️ 压缩包 ${humanSize(size)} 超过单文件上限 ${c.maxUploadMB} MB，已按整包上传（没有切分）。${uploadNote ? `\n${uploadNote}` : ''}`
           }
         } else {
           uploadNote = zipTooBig
@@ -1285,6 +1287,7 @@ async function runJob(job) {
         }
       }
     }
+    if (uploadNote) await say(uploadNote)
 
     // ④ 按需删除原图（上传之后）
     const wantCleanup = c.deleteImagesAfterPdf && c.outputFormat === 'pdf' && Boolean(pdfInfo) && deliveryConfirmed
@@ -1308,44 +1311,10 @@ async function runJob(job) {
       warn('设置了「合成 PDF 后删除原图」，但本次 PDF 未生成 → 已保留原图，未做删除')
     }
 
-    // ⑤ 汇报
-    const displayName = toSimplified(dl.album.name)
-    let cardSent = false
-    try {
-      const cover = firstPageImage(dl.albumDir) || (await fetchSiteCover(String(dl.album.id)))
-      const payload = {
-        id: String(dl.album.id),
-        title: cleanTitle(displayName) || displayName,
-        authors: (dl.album.authors || []).map((a) => toSimplified(String(a).trim())).filter(Boolean),
-        tags: (dl.album.tags || []).map((t) => toSimplified(String(t).trim())).filter(Boolean),
-        kind: `${dl.chapters.length} 话 · ${dl.totals.ok} 张`,
-        pdf: pdfInfo ? `PDF ${pdfInfo.pages} 页（${humanSize(pdfInfo.bytes)}）` : '',
-        desc: toSimplified(String(dl.album.description || '')).slice(0, 400),
-        cover,
-      }
-      const imagePath = await renderAlbumImage({ payload })
-      cardSent = await sendAlbumCard(imagePath)
-    } catch (error) {
-      warn(`简介卡片渲染/发送失败，降级文字版：${error?.message ?? error}`)
+    // ⑤ 收尾：文件已经在第 4 条消息里发出，这里只在有缺页时补一句
+    if (dl.totals.fail > 0) {
+      await say(`有 ${dl.totals.fail} 张没下下来，重发同一个 ID 会接着补下。`)
     }
-
-    const lines = []
-    if (!cardSent) {
-      lines.push(`✅ 「${displayName}」（JM${dl.album.id}）处理好啦`)
-      if (dl.album.description) lines.push(`简介：${toSimplified(dl.album.description).slice(0, 500)}`)
-    } else {
-      lines.push('✅ 处理好啦（简介见上图）')
-    }
-    const submitter = firstSubmitters.get(`${chatKey}:${albumId}`) || (job.whoName ? { id: job.who || '', name: job.whoName } : null)
-    const subName = String(submitter?.name || '').trim()
-    const subId = String(submitter?.id || '').trim()
-    if (subName && subId) lines.push(`首次发车：${subName}(${subId})`)
-    else if (subName || subId) lines.push(`首次发车：${subName || subId}`)
-    if (record.pdfError) lines.push(`PDF 没生成：${record.pdfError}`)
-    if (record.zip) lines.push(record.zip.encrypted ? `🔒 解压密码：${record.zip.password}` : '🔒 解压密码：无')
-    if (uploadNote) lines.push(uploadNote)
-    if (dl.totals.fail > 0) lines.push(`有 ${dl.totals.fail} 张没下下来，重发同一个 ID 会接着补下。`)
-    await say(lines.join('\n'))
 
     if (cleanup) log(`已删除原图 ${cleanup.files} 个（释放 ${humanSize(cleanup.freed)}），只保留 PDF：${dl.albumDir}`)
     if (pdfInfo) log(`JM${dl.album.id} 完成：${pdfInfo.pages} 页/${humanSize(pdfInfo.bytes)}，目录 ${dl.albumDir}`)
@@ -1554,9 +1523,16 @@ async function scanLibrary(root) {
   return out
 }
 
-/** 找目录里的第一张页面图当卡片缩略图（递归 ≤3 层）。 */
+/** 找一张能当缩略图的图：优先 worker 生成的已还原封面，其次第一张页面图（递归 ≤3 层）。 */
 function firstPageImage(dir, depth = 0) {
   try {
+    // 优先用「已还原」的封面：原图是竖切打乱的，直接当封面会错位
+    const restored = path.join(dir, 'cover.jpg')
+    try {
+      if (fs.statSync(restored).size > 1024) return restored
+    } catch {
+      /* 没有就往下找 */
+    }
     const entries = fs.readdirSync(dir, { withFileTypes: true })
     const images = entries
       .filter((x) => x.isFile() && /\.(jpe?g|png|webp)$/i.test(x.name))
@@ -1620,18 +1596,19 @@ async function buildTodayItems(root, { limit = 50 } = {}) {
       cover: firstPageImage(e.dir),
     }
   })
-  // 封面兜底：原图被清理时从站点拉（daily-covers 有缓存）。
+  // 封面：本地没有已还原封面（cover.jpg）的，尽量换成站点官方封面。
   // 必须限时限量：站点慢的时候一本就要几十秒，会把消息处理（30 秒）拖超时。
   const deadline = Date.now() + 6000
   let fetched = 0
   for (const it of mapped) {
-    if (it.cover) continue
+    if (/cover\.jpg$/i.test(String(it.cover || ''))) continue
     if (fetched >= 8 || Date.now() > deadline) break
     fetched += 1
     try {
-      it.cover = await withTimeout(fetchSiteCover(it.id), 2500)
+      const site = await withTimeout(fetchSiteCover(it.id), 2500)
+      if (site) it.cover = site
     } catch {
-      /* 拉不到就显示"无封面"占位 */
+      /* 拉不到就继续用本地封面 */
     }
   }
   return mapped
@@ -1810,6 +1787,7 @@ async function enqueueDownload(session, id) {
     const t = activeTasks.get(id)
     return {
       ok: true,
+      queued: false,
       text: `JM${id} 已经在处理中（阶段：${t.stage}，已开始 ${Math.round((Date.now() - t.startedAt) / 1000)} 秒），不要重复提交。`,
     }
   }
@@ -1849,17 +1827,19 @@ async function enqueueDownload(session, id) {
 
   return {
     ok: true,
+    queued: true,
     text: `JM${id} 已经排上队开始处理了（${plan}）。\n`
       + '会按顺序一本一本跑，跟这次对话结不结束无关，跑完自动把结果发到群里。'
       + (activeTasks.size > 1 ? `\n当前队列/处理中一共 ${activeTasks.size} 本。` : ''),
   }
 }
 
-/** 消息里的下载请求：入队并把回执发出去。 */
+/** 消息里的下载请求：入队。成功时不发回执——第 1 条消息（封面+书名）就是回执。 */
 async function handleDownload(session, id) {
   const chat = chatOf(session)
   const r = await enqueueDownload(session, id)
-  await sendText(chat, r.ok ? r.text : r.error)
+  if (!r.ok) await sendText(chat, r.error)
+  else if (r.queued === false) await sendText(chat, r.text)
 }
 
 async function handleGroupToggle(session, action) {

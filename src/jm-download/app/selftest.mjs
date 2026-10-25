@@ -232,6 +232,7 @@ if (python) {
     pages.push(p)
   }
   const pdfOut = path.join(TMP, 'book.pdf')
+  const coverOut = path.join(TMP, 'cover-out.jpg')
   const res = await pdfBridge.runTask({
     python,
     task: {
@@ -243,12 +244,14 @@ if (python) {
       quality: 85,
       max_dim: 0,
       parts: 1,
+      cover_output: coverOut,
       chapters: [{ name: '第1话', pages, aid: '422444' }],
     },
     timeoutMs: 120000,
   })
   ok('PDF 合成', res.ok === true, res.error || '')
   ok('PDF 页数', res.pages === 5, `pages=${res.pages}`)
+  ok('封面缩略图', fs.existsSync(coverOut) && fs.statSync(coverOut).size > 1024, coverOut)
   if (fs.existsSync(pdfOut)) {
     const head = fs.readFileSync(pdfOut).subarray(0, 5).toString('latin1')
     ok('PDF 文件头', head === '%PDF-', head)

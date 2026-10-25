@@ -207,6 +207,8 @@ def run_task(task):
     os.makedirs(os.path.dirname(os.path.abspath(output)), exist_ok=True)
 
     outputs = []
+    cover_out = str(task.get("cover_output") or "")
+    cover_written = False
     for gi, group in enumerate(groups, start=1):
         frames = []
         for _chapter_name, path, page_aid in group:
@@ -223,6 +225,17 @@ def run_task(task):
                 if do_descramble and segmentation_num(scramble_id, page_aid, filename_stem(path)) > 0:
                     restored += 1
                 ok_count += 1
+                # 顺手存一张**已还原**的封面缩略图：原图是竖切打乱的，
+                # 直接拿第一页当封面会显示成错位的拼图（2026-10-26 实测）。
+                if cover_out and not cover_written:
+                    try:
+                        thumb = frames[-1].copy()
+                        thumb.thumbnail((600, 900), Image.LANCZOS)
+                        os.makedirs(os.path.dirname(os.path.abspath(cover_out)), exist_ok=True)
+                        thumb.save(cover_out, "JPEG", quality=85)
+                        cover_written = True
+                    except Exception as exc:  # noqa: BLE001
+                        warnings.append(f"封面生成失败：{exc}")
             except Exception as exc:  # noqa: BLE001
                 failed.append({"page": os.path.basename(path), "error": f"{type(exc).__name__}: {exc}"})
 
