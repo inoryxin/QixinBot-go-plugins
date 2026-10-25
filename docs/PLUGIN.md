@@ -1434,7 +1434,13 @@ runtime-python-windows-x64.anzu   Python 3.12.10   73MB
 runtime-python-linux-x64.anzu     Python 3.12.15  155MB
 ```
 
-下载入口暂未开放；开放后只提供这 4 个完整包，不下载官方裸解释器。
+发布地址（Gitea Release）：
+
+```
+http://10.0.0.140:30008/anzu/QixinBot-release/releases/tag/runtimes-v1
+```
+
+控制台的下载按钮暂未接；可以手动下载后，在「依赖」页上传安装。只提供这 4 个完整包，不下载官方裸解释器。
 
 ## 6.2 共享数据
 

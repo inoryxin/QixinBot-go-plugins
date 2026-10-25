@@ -219,17 +219,15 @@ password = "<控制台密码>"
 
 ### 运行时环境
 
-概览页顶部会检测系统里有没有 Node.js / Python，没有的话直接提示安装地址：
+概览页顶部显示 Node.js / Python 版本和**来源**（框架自带 / 系统 PATH）。
+框架自带的运行时从「依赖」页上传 `runtime-*.anzu` 安装，自带共享依赖和字体。
 
 ```
-┌─────────────┬──────────────────────┐
-│ Node.js     │ Python               │
-│ 24.18.0     │ 未装                 │
-│             │ 没装，或装的是 Windows │
-│             │ 应用商店的占位符。安装 │
-│             │ 地址：python.org      │
-└─────────────┴──────────────────────┘
+Node.js 24.20.0      Python 3.12.10
+来源：框架自带        来源：框架自带
 ```
+
+本机用不了的平台包会被拒绝安装，启动时也会清掉 `data/runtimes` 里的残留。
 
 **Windows 应用商店的 python 是占位符**——文件存在、`where` 能查到，
 但真的执行会返回 9009。框架会试跑 `python --version` 来识别这种情况。
@@ -283,19 +281,15 @@ QixinBot-release     发行包：bin/ + sdk/ + config.toml + 启动脚本
 **插件不在 release 里**。用户装插件从插件仓库拿，或在控制台上传。
 `package.ps1` 默认不打包插件；确实要做"全家桶"压缩包时才加 `-WithPlugins`。
 
-### 指定解释器路径（多环境）
+### 解释器来源
 
-首页「运行时环境」每张卡片下面可以填**绝对路径**：
+首页只显示来源，不再让用户手填路径：
 
-```
-Node.js   [C:\Program Files\nodejs\node.exe]  [存]
-Python    [C:\qqbot\tools\py\python.exe]      [存]
-```
-
-- 留空 = 自动探测 PATH
-- 存到 `data/runtime.json`
+- 框架自带：从「依赖」页上传 `runtime-node-*.anzu` / `runtime-python-*.anzu`
+- 系统 PATH：没有框架运行时时的兜底
 - 插件会拿到 `QIXIN_NODE` / `QIXIN_PYTHON` 环境变量，用同一个解释器
-- 装了好几个 Python 想固定用某个，就填这里
+
+需要手工指定时仍可编辑 `data/runtime.json`，但正常使用不需要碰它。
 
 ### 升级时的目录占用
 
