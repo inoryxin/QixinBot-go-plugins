@@ -1287,48 +1287,86 @@ data/deps/node/node_modules
 运行时 node_modules
 ```
 
-### 当前 Windows 运行时自带什么
+### 运行时自带依赖（全量清单）
 
-**Node 24.20.0**
+> 只列**直接依赖**；它们自己的传递依赖由 wheel/npm 包带进来，不展开。
+> 版本以运行时包 manifest 为准；升级运行时会同步更新这张表。
 
-| 包 | 版本 |
-|---|---|
-| `@napi-rs/canvas` | 1.0.13 |
-| `axios` | 1.20.0 |
-| `cheerio` | 1.2.0 |
-| `undici` | 8.12.3 |
-| `js-yaml` | 5.5.0 |
-| `dayjs` | 1.11.23 |
-| `lodash` | 4.18.1 |
-| `qrcode` | 1.5.4 |
-| `jimp` | 1.6.1 |
+**Node.js 24.20.0**
+
+| 包 | Windows | Linux |
+|---|---|---|
+| `@napi-rs/canvas` | 1.0.13 | 1.0.13 |
+| `axios` | 1.20.0 | 1.20.0 |
+| `cheerio` | 1.2.0 | 1.2.0 |
+| `undici` | 8.12.3 | 8.12.3 |
+| `js-yaml` | 5.5.0 | 5.5.0 |
+| `dayjs` | 1.11.23 | 1.11.23 |
+| `lodash` | 4.18.1 | 4.18.1 |
+| `qrcode` | 1.5.4 | 1.5.4 |
+| `jimp` | 1.6.1 | 1.6.1 |
+
+运行时还带 `npm`（给依赖安装用）和霞鹜文楷字体，不算插件可 import 的包。
 
 **Python 3.12（Windows 3.12.10 / Linux 3.12.15）**
 
-| 包 | 版本 |
-|---|---|
-| Pillow | 13.0.0 |
-| numpy | 2.5.4 |
-| requests | 2.34.2 |
-| httpx | 0.28.1 |
-| aiohttp | 3.14.5 |
-| beautifulsoup4 | 4.15.0 |
-| PyYAML | 6.0.3 |
-| python-dateutil | 3.0.0 |
-| pytz / tzdata | 2026.5 |
-| jinja2 | 3.1.6 |
-| pydantic | 2.14.1 |
-| tenacity | 9.2.1 |
-| aiofiles | 25.1.0 |
-| qrcode | 8.2 |
-| imageio | 2.38.1 |
-| emoji | 2.16.0 |
-| psutil | 7.2.2 |
-| lxml | 6.1.3 |
-| cryptography | 50.0.2 |
+| 包 | Windows | Linux |
+|---|---|---|
+| Pillow | 13.0.0 | 12.2.0 |
+| numpy | 2.5.4 | 2.2.6 |
+| requests | 2.34.2 | 2.34.2 |
+| httpx | 0.28.1 | 0.28.1 |
+| aiohttp | 3.14.5 | 3.14.5 |
+| beautifulsoup4 | 4.15.0 | 4.15.0 |
+| PyYAML | 6.0.3 | 6.0.3 |
+| python-dateutil | 3.0.0 | 3.0.0 |
+| pytz / tzdata | 2026.5 | 2026.5 |
+| jinja2 | 3.1.6 | 3.1.6 |
+| pydantic | 2.14.1 | 2.14.1 |
+| tenacity | 9.2.1 | 9.2.1 |
+| aiofiles | 25.1.0 | 25.1.0 |
+| qrcode | 8.2 | 8.2 |
+| imageio | 2.38.1 | 2.38.1 |
+| emoji | 2.16.0 | 2.16.0 |
+| psutil | 7.2.2 | 7.2.2 |
+| lxml | 6.1.3 | 6.1.3 |
+| cryptography | 50.0.2 | 50.0.2 |
 
-> 这张表是 Windows 包的实测清单；Linux 包已打包，版本略有差异（Pillow 12.2 / numpy 2.2.6）。
-> 表里有的，插件里**不要再带一份**。
+**表里有的，插件里不要再带一份。**
+
+### 怎么调用自带依赖
+
+运行时依赖**不需要写 `[[requires]]`**，直接 import / require：
+
+```js
+// Node 插件
+import axios from 'axios'
+import { createCanvas } from '@napi-rs/canvas'
+```
+
+```python
+# Python 插件
+from PIL import Image
+import numpy as np
+```
+
+画图优先用 SDK 封装（字体自动注册）：
+
+```js
+import { renderOps, probe } from '../_sdk/canvas-kit.mjs'
+```
+
+平台差异（Windows/Linux 的原生二进制）由运行时装好，插件代码不用判断平台。
+
+### 缺的依赖怎么处理
+
+| 情况 | 做法 |
+|---|---|
+| 纯 Python / 纯 JS | 打进插件 `deps/`，见 7.9 |
+| 平台原生（Pillow、numpy、sharp、opencv…） | **不要打包**；运行时没有就声明 `[[requires]]`，管理员装 |
+| 想安装时自动装 | `[[requires]]` + `download = true`，装到插件自己的 `deps/` |
+
+具体命令、打包红线见 **7.9 依赖怎么打包**。
 
 ### 插件包只准打包纯代码
 
