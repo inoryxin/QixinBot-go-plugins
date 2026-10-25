@@ -1,0 +1,30 @@
+id = "emojimix"
+name = "emoji 合成"
+version = "1.0.0"
+apiVersion = "1.x"
+exec = ["node", "app/index.js"]
+description = "把两个 emoji 合成一张图（Google Emoji Kitchen）"
+priority = 10
+
+[access]
+require_prefix = false
+require_mention = false
+
+[[commands]]
+id = "emojimix.mix"
+usage = "😀😃 或 😀+😃"
+description = "消息里出现两个 emoji 就自动合成"
+
+[[tools]]
+name = "mix_emoji"
+description = "把两个 emoji 合成一张图。用户发「😀+😃」或说「把这俩 emoji 合一下」时调用。"
+
+[tools.parameters]
+type = "object"
+required = ["emoji1", "emoji2"]
+
+[tools.parameters.properties.emoji1]
+type = "string"
+
+[tools.parameters.properties.emoji2]
+type = "string"
