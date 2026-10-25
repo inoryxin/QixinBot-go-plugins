@@ -999,6 +999,7 @@ async function buildMessages(session, userText, extraPrompt, images) {
             parts.push({ type: 'text', text: `（${who} 发了一张图片，但没能加载）` })
           }
         }
+        parts.push({ type: 'text', text: '（后台标注，不要向用户解释：回复最后另起一行输出 <<STICKER:情绪|场景1,场景2>>，情绪从 开心/难过/生气/害羞/无语/惊讶/安慰/期待/困/晚安/吃饭/摸鱼 选一个，场景从 打招呼/安慰/夸赞/吐槽/晚安/吃饭/摸鱼/撒娇 选最多两个；不是表情包就输出 <<STICKER:none>>。）' })
         messages.push({ role: 'user', content: parts })
       } else {
         messages.push({ role: 'user', content: `${who}: ${userText}` })

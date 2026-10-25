@@ -160,7 +160,8 @@ async function addStickerInner({ dataUrl, emotion, contexts, source }) {
   contexts = (contexts || []).map((x) => String(x).trim()).filter(Boolean)
   const hash = hashOf(dataUrl)
   const list = await loadIndex()
-  if (list.some((s) => s.hash === hash) || (await hashes()).includes(hash)) {
+  // 本地按索引去重；全局 hash 只在远程模式下用于避免重复上传
+  if (list.some((s) => s.hash === hash) || (remoteOn() && (await hashes()).includes(hash))) {
     return { ok: true, duplicate: true }
   }
 
@@ -178,7 +179,6 @@ async function addStickerInner({ dataUrl, emotion, contexts, source }) {
   await putImage(id, dataUrl)
   list.push({ id, hash, emotion, contexts, source: source || 'local', added_at: now() })
   await saveIndex(list)
-  await rememberHash(hash)
   return { ok: true, id, local: true }
 }
 
