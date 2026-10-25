@@ -63,6 +63,7 @@ cd my-plugin
 | **fortune** | 运势抽签（23 个主题 + 图片） | `canvas.render` |
 | **group-manager** | 群管理（欢迎/违禁词/禁言/踢人） | — |
 | **home-assistant** | 智能家居控制 | — |
+| **jm-download** | 禁漫下载（异步队列 + PDF/ZIP + 上传） | — |
 | **keyword-reply** | 关键词回复 | — |
 | **ai-llm** | LLM 服务（多后端） | — |
 | **ncm-saying** | 网易云热评（可每日定时） | — |

@@ -250,7 +250,7 @@ async function ensureTranslatedTitles(items) {
       need.push(t)
     }
     if (!need.length) return
-    const fresh = await translateTitles(need.slice(0, 20))
+    const fresh = await translateTitles(need.slice(0, 12))
     let changed = false
     for (const [src, dst] of Object.entries(fresh)) {
       if (dst && dst !== src) {
@@ -495,19 +495,22 @@ async function pump() {
   queueBusy = true
   const task = activeTasks.get(nextId)
   try {
-    taskQueue.shift()
     if (!task || task.control?.deleted) {
+      if (taskQueue[0] === nextId) taskQueue.shift()
       activeTasks.delete(nextId)
       return
     }
     task.stage = 'running'
     task.startedAt = Date.now()
-    log(`开始处理队列任务 JM${nextId}（队列里还剩 ${taskQueue.length} 本）`)
+    log(`开始处理队列任务 JM${nextId}（队列里还剩 ${taskQueue.length - 1} 本）`)
+    // 注意：这里**不**把队首移出队列 —— 进程中途被杀时 queue.json 里还留着它，
+    // 重启后能接着跑。跑完（或删除）才出队。
     saveQueue()
     await runJob(task)
   } catch (error) {
     if (!task?.control?.deleted) warn(`排队任务异常（已记录）JM${nextId}：${error?.stack ?? error}`)
   } finally {
+    if (taskQueue[0] === nextId) taskQueue.shift()
     activeTasks.delete(nextId)
     if (task?.chatKey && activeByChat.get(task.chatKey) === nextId) activeByChat.delete(task.chatKey)
     queueBusy = false
@@ -1274,7 +1277,7 @@ async function runJob(job) {
         } else {
           uploadNote = zipTooBig
             ? `⚠️ 压缩包 ${humanSize(size)} 超过单文件上限 ${c.maxUploadMB} MB，上传失败：${r.error}\n压缩包已留在本地：${deliverPath}`
-            : `⚠️ 文件上传失败（已自动重试，原图已保留）：${r.error}`
+            : `⚠️ 文件上传失败（原图与成品已保留）：${r.error}`
         }
       }
     }
@@ -1613,19 +1616,29 @@ async function buildTodayItems(root, { limit = 50 } = {}) {
       cover: firstPageImage(e.dir),
     }
   })
-  // 封面兜底：原图被清理时从站点拉（daily-covers 有缓存）；最多补 30 张，别让列表卡太久
+  // 封面兜底：原图被清理时从站点拉（daily-covers 有缓存）。
+  // 必须限时限量：站点慢的时候一本就要几十秒，会把消息处理（30 秒）拖超时。
+  const deadline = Date.now() + 6000
   let fetched = 0
   for (const it of mapped) {
     if (it.cover) continue
-    if (fetched >= 30) break
+    if (fetched >= 8 || Date.now() > deadline) break
     fetched += 1
     try {
-      it.cover = await fetchSiteCover(it.id)
+      it.cover = await withTimeout(fetchSiteCover(it.id), 2500)
     } catch {
       /* 拉不到就显示"无封面"占位 */
     }
   }
   return mapped
+}
+
+/** Promise.race 的小工具：超时返回 ''，原 promise 继续跑但结果被忽略。 */
+function withTimeout(promise, ms) {
+  return Promise.race([
+    promise,
+    new Promise((resolve) => setTimeout(() => resolve(''), ms)),
+  ])
 }
 
 /** 文字版书架（信息图渲染失败时降级）。 */
@@ -1822,10 +1835,11 @@ async function enqueueDownload(session, id) {
   saveQueue()
   void pump()
 
-  const worker = detectWorker()
+  // 回执里的"计划"不阻塞：Python 探测是 spawnSync，工具调用只有 8 秒预算，
+  // 这里只按设置描述，真实能力在 runJob 里探测并在结果里体现。
   const plan = [
     c.outputFormat === 'pdf' ? '合成 PDF' : '保留图片',
-    c.restore && worker.ok ? '还原竖切' : '',
+    c.restore ? '还原竖切' : '',
     c.uploadMode === 'off' ? '不上传' : '上传到本会话',
   ].filter(Boolean).join(' + ')
 
@@ -1925,7 +1939,7 @@ async function replyTodayList(session) {
         footnote: `共 ${items.length} 本 · 发漫画编号即可下载`,
         items,
       }
-      const imagePath = await renderDigestImage({ payload })
+      const imagePath = await renderDigestImage({ payload, outPath: path.join(DATA_DIR, 'today-list.jpg') })
       const sent = await sendImageWithText(
         chat,
         `📚 今日JM 本地书架（${items.length} 本）\n想下载哪本，直接发编号即可。`,
@@ -2193,14 +2207,19 @@ async function callTool({ name, args, session }) {
 
     if (name === 'jm_today_list') {
       if (!session) return { ok: false, error: '这个工具需要会话上下文' }
-      await replyTodayList(session)
-      return { ok: true, data: { text: '今日JM 已发到会话。' } }
+      const gate = gateText(chatKey)
+      if (gate) return { ok: false, error: gate }
+      // 工具超时只有 8 秒：信息图要读目录 + 拉封面 + 跑 Python，放后台做，先回执
+      void replyTodayList(session).catch((e) => warn(`今日JM 后台任务失败：${e?.message ?? e}`))
+      return { ok: true, data: { text: '正在生成今日JM 信息图，好了会直接发到会话，不需要复述。' } }
     }
 
     if (name === 'jm_daily_updates') {
       if (!session) return { ok: false, error: '这个工具需要会话上下文' }
-      await replyUpdates(session)
-      return { ok: true, data: { text: '更新清单已发到会话。' } }
+      const gate = gateText(chatKey)
+      if (gate) return { ok: false, error: gate }
+      void replyUpdates(session).catch((e) => warn(`更新JM 后台任务失败：${e?.message ?? e}`))
+      return { ok: true, data: { text: '正在生成更新清单信息图，好了会直接发到会话，不需要复述。' } }
     }
 
     if (name === 'jm_group_toggle') {
@@ -2279,6 +2298,14 @@ serve({
     // 等握手彻底结束再续跑（initialize 里立刻发消息可能赶上宿主还没准备好）
     if (resumed) setTimeout(() => { void pump() }, 1500)
     startTimers()
+    // 预热 Python 探测：第一次 spawnSync 可能要一两秒，别让它落在工具调用的 8 秒预算里
+    setTimeout(() => {
+      try {
+        detectWorker()
+      } catch {
+        /* 探测失败会在真正用到时再报 */
+      }
+    }, 5000)
 
     log(`禁漫下载已就绪：目录 ${downloadRoot()}，输出 ${cfg().outputFormat}，队列 ${resumed} 本`)
     return { api_version: '1.0' }

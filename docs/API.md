@@ -523,8 +523,7 @@ OneBot 11 原生格式，不重新发明：
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| GET | `/api/overview` | 运行时长、账号、插件、功能数 |
-| GET | `/api/plugins` | 插件状态列表 |
+| GET | `/api/overview` | 运行时长、账号、插件列表（`plugins` 字段）、功能数 |
 | GET | `/api/features` | 功能注册表 |
 | GET | `/api/tools` | 工具列表 |
 | POST | `/api/tools/call` | 手动调用工具（`name` + `args` JSON） |
