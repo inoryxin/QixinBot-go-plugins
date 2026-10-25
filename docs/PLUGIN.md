@@ -1480,6 +1480,95 @@ http://10.0.0.140:30008/anzu/QixinBot-release/releases/tag/runtimes-v1
 
 控制台的下载按钮暂未接；可以手动下载后，在「依赖」页上传安装。只提供这 4 个完整包，不下载官方裸解释器。
 
+## 6.1g 混合依赖：同时用 Node.js 和 Python
+
+可以。**一个插件只有一个主进程**，混合依赖 = 主进程 + 另一种语言的子进程。
+
+### manifest
+
+```toml
+exec = ["node", "app/index.js"]
+
+# 两个 [[requires]] 可以同时存在
+[[requires]]
+kind = "node"
+name = "sharp"
+version = "^0.34"
+
+[[requires]]
+kind = "python"
+name = "opencv-python"
+module = "cv2"
+version = "4.10.*"
+```
+
+两边依赖目录也各放各的：
+
+```
+<插件>/deps/node_modules
+<插件>/deps/python
+```
+
+框架会把两个目录分别加进 `NODE_PATH` 和 `PYTHONPATH`，互不干扰。
+
+### 主进程 Node，调 Python
+
+```js
+import { spawn } from 'node:child_process'
+
+const python = process.env.QIXIN_PYTHON || 'python'
+
+function runPython(code) {
+  return new Promise((resolve, reject) => {
+    const p = spawn(python, ['-c', code], {
+      env: process.env,
+      stdio: ['ignore', 'pipe', 'pipe'], // 不要把子进程 stdout 接到协议通道
+    })
+    let out = ''
+    let err = ''
+    p.stdout.on('data', (d) => { out += d })
+    p.stderr.on('data', (d) => { err += d })
+    p.on('error', reject)
+    p.on('close', (code) => code === 0 ? resolve(out.trim()) : reject(new Error(err || `python exit ${code}`)))
+  })
+}
+```
+
+### 主进程 Python，调 Node
+
+```python
+import os
+import subprocess
+
+node = os.environ.get("QIXIN_NODE") or "node"
+
+out = subprocess.check_output(
+    [node, "worker.mjs"],
+    text=True,
+    env=os.environ,
+)
+```
+
+### 规则
+
+1. **不是同一进程同时跑两种语言**：一个 `exec`，另一种语言通过子进程调用
+2. 原生依赖仍然**不要打进插件包**；运行时提供，或 `[[requires]]` 让管理员装
+3. 插件包里的 `deps/node_modules`、`deps/python` 只放纯 JS / 纯 Python
+4. 子进程的 stdout/stderr 自己接，不能污染插件的 JSON-RPC stdout
+5. 别每条消息都起新进程：常驻 worker，用 stdin/stdout JSON Lines 通信
+6. 插件卸载/重载时要杀掉子进程，避免孤儿进程
+
+### 打包
+
+`qixinpack pack` 会同时带上两个依赖目录，但原生检查对两边都生效：
+
+```
+deps/node_modules/.../*.node   → 拒绝
+deps/python/.../*.pyd           → 拒绝
+```
+
+所以混合依赖插件仍然可以**一份包跨平台**，平台差异由两边的运行时包负责。
+
 ## 6.2 共享数据
 
 插件可以把自己的一部分数据托管给框架，其他插件读。
@@ -1847,6 +1936,22 @@ const buffer = await renderOps({
 const sizes = await probe(['https://...', 'https://...'])
 // [{url, width, height}]
 ```
+
+### 还不够用？直接拿底层能力
+
+`canvas-kit` 除了 `renderOps` / `probe`，还导出
+`ensureFonts()` / `createCanvas` / `loadImage` / `GlobalFonts`：
+
+```js
+import { ensureFonts, createCanvas, loadImage } from '../_sdk/canvas-kit.mjs'
+ensureFonts()
+const img = await loadImage('D:/pics/a.webp')   // 也接受 Buffer
+const canvas = createCanvas(400, 600)
+canvas.getContext('2d').drawImage(img, sx, sy, sw, sh, 0, 0, 400, 600) // 源矩形裁剪
+```
+
+需要**源矩形裁剪、逐像素处理**（例如漫画竖切打乱还原、缩略图裁切）时用这套；
+`loadImage` 支持本地路径 / http / `data:` / `base64://` / Buffer。
 
 ### 字体
 

@@ -103,13 +103,27 @@ copy packages\jm-download.anzu <框架目录>\plugins\
 | `llm.chat` 能力（ai-llm 插件） | 日文标题翻译 | 只做繁→简，标题保留日文 |
 | 中文字体 | 信息图里的中文/数字 | 缺字体时渲染失败 → 自动降级文字版 |
 
-Pillow 可以装系统里，也可以塞进插件的 `deps/python`（框架会把 `deps/python`
-加进 `PYTHONPATH`，不用动系统环境）：
+### Pillow 从哪来
+
+**manifest 里故意没写 `[[requires]]`**：框架的 python 依赖检查是看目录里有没有
+`PIL/`，看不到 `pip install --user` 装进 `%APPDATA%\Python\...\site-packages` 的情况；
+写死会让"明明能 import PIL"的机器启用失败。PDF/信息图是可选能力，缺了降级为只存原图，
+所以保持软依赖（启动时真实探测，`/支持PDF吗` 会说明）。
+
+三种来源，按优先级：
+
+1. **Python 运行时包**（推荐）：控制台「依赖」页装 `runtime-python-<平台>-x64.anzu`，
+   自带 Python 3.12 + Pillow（Windows 13.0.0 / Linux 12.2.0），框架会把
+   `QIXIN_PYTHON` 注入给插件。
+2. **系统/用户 Python**：`pip install Pillow` 即可，插件按 `py`/`python` 探测。
+3. **插件自己的 `deps/python`**（不推荐，平台 wheel 会让包失去跨平台）：
 
 ```powershell
-# 目标机器上执行；Pillow 的 wheel 是平台相关的，Windows 装出来的不能拷到 Linux
 pip install --target <插件运行区>\deps\python Pillow
 ```
+
+> 想让插件**没 Pillow 就不许启用**，可以自己加硬依赖：
+> `[[requires]] kind = "python"`、`name = "Pillow"`、`module = "PIL"`。
 
 Python 解释器优先级：插件设置 `pythonPath` → 框架「运行时环境」的 `QIXIN_PYTHON`
 → `py` 启动器 → PATH 的 `python` → 常见安装位置。**不要写死 `C:\Python3xx`**。

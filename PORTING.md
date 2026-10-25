@@ -55,10 +55,11 @@
 | reload | ❌ 不移植 | 框架自带热重载，重复了 |
 | jm | ✅ 已移植（`jm-download`） | 异步队列 + 竖切还原 + PDF/ZIP + 上传 + 今日JM/更新JM 信息图 |
 
-> `jm-download` 是从新版 **skill 包 v2.5.1** 移植的（不是旧仓库的 `jm`）：旧版 bug 没有搬过来，
-> 引擎/还原/ZIP/信息图原样复用，编排层按 QixinBot 的 `[[commands]]`/`[[tools]]`/`handle_message`
-> 重写。原 skill 的「钩子改写成让模型调工具」在 QixinBot 里不需要——指令直接处理，快且省 token。
-> 细节见 `src/jm-download/README.md`。
+> `jm-download` 是从新版 **skill 包 v2.5.1** 移植的（不是旧仓库的 `jm`）：旧版 bug 没有搬过来。
+> 编排层按 QixinBot 的 `[[commands]]`/`[[tools]]`/`handle_message` 重写；图像层（竖切还原 /
+> PDF / 信息卡）从 **Python+Pillow 换成运行时 `@napi-rs/canvas`**，插件现在是**纯 Node**，
+> 包里不含原生模块、也没有 `.py`，一份包跨平台。原 skill 的「钩子改写成让模型调工具」
+> 在 QixinBot 里不需要——指令直接处理，快且省 token。细节见 `src/jm-download/README.md`。
 
 ## 移植顺序和理由
 

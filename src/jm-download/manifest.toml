@@ -1,12 +1,24 @@
 id = "jm-download"
 name = "禁漫下载"
-version = "1.0.0"
+version = "1.1.0"
 apiVersion = "1.x"
 exec = ["node", "app/index.js"]
 description = "群友发漫画 ID 就后台下载整本、还原竖切、合成 PDF、打包上传；附今日JM/更新JM 信息图、按群开关"
 permissions = ["onebot.write"]
 use_tools = true
 concurrency = "session"
+
+# 注意：**故意不写 [[requires]]**。
+# 框架对 python 依赖是按"目录里有没有这个包"检查的，看不到 pip --user 装到
+# %APPDATA%\Python\...\site-packages 的情况；写死 requires 会让"明明能 import PIL"
+# 的机器直接启用失败。PDF/信息图本来就是可选能力（缺了降级为只存原图），
+# 所以这里保持软依赖：启动后用 Python 探测，缺了在结果里说明。
+# 想要硬依赖可自行加：
+#   [[requires]]
+#   kind = "python"
+#   name = "Pillow"
+#   module = "PIL"
+#   version = ">=10"
 
 # 用户平时直接发 jm123456 / 漫画链接，不带命令前缀，所以门禁不能强制前缀。
 [access]
