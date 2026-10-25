@@ -1,0 +1,75 @@
+id = "ai-life"
+name = "她的生活"
+version = "1.0.0"
+apiVersion = "1.x"
+exec = ["node", "app/index.js"]
+description = "模拟一个人一天在干什么，给 AI 聊天提供当前状态（在上班/在吃饭/困了）"
+
+# 服务插件：不接消息，只提供能力和工具
+kind = "service"
+provides = ["life.now@1", "life.set@1", "life.plan@1"]
+
+[[capability]]
+name = "life.now"
+description = "查询她此刻在做什么、心情和精力"
+
+[[capability]]
+name = "life.plan"
+description = "查看/保存/生成某天的时间表"
+
+[capability.parameters]
+type = "object"
+
+[capability.parameters.properties.action]
+type = "string"
+enum = ["get", "save", "generate", "clear"]
+
+[capability.parameters.properties.date]
+type = "string"
+
+[capability.parameters.properties.items]
+type = "array"
+
+[[capability]]
+name = "life.set"
+description = "临时改状态（比如加班两小时）"
+[capability.parameters]
+type = "object"
+[capability.parameters.properties.activity]
+type = "string"
+[capability.parameters.properties.minutes]
+type = "number"
+
+[[tools]]
+name = "life_now"
+description = "查看对方（这个 AI）现在在做什么、心情如何。用户问「你在干嘛」「忙吗」时调用。"
+
+[[settings]]
+key = "wake_hour"
+label = "起床时间（0-23）"
+type = "number"
+default = 7
+
+[[settings]]
+key = "sleep_hour"
+label = "睡觉时间（0-23）"
+type = "number"
+default = 23
+
+[[settings]]
+key = "work_start"
+label = "上班时间（0-23）"
+type = "number"
+default = 9
+
+[[settings]]
+key = "work_end"
+label = "下班时间（0-23）"
+type = "number"
+default = 18
+
+# 它是 AI 聊天的扩展：没有主插件就没有意义
+[[requires]]
+kind = "plugin"
+name = "AI 聊天"
+value = "ai-chat"

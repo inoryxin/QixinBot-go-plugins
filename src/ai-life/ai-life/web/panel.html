@@ -1,0 +1,78 @@
+<!-- 她的生活：明日时间表生成/预览/编辑 -->
+<h2 style="margin-top:8px">明日时间表</h2>
+<p class="muted" style="margin:0 0 10px">
+  按作息让 AI 生成一天的时间表，先生成预览，可以直接改 JSON，再保存。保存后天到点会按这张表生活。
+</p>
+
+<div class="row" style="margin-bottom:10px">
+  <input type="date" id="life-date">
+  <button onclick="lifeGenerate()">AI 生成</button>
+  <button onclick="lifeSave()">保存</button>
+  <button onclick="lifeLoad()">刷新</button>
+  <span id="life-msg" class="muted"></span>
+</div>
+
+<div id="life-preview" class="muted" style="margin-bottom:10px"></div>
+<textarea id="life-json" spellcheck="false" style="width:100%;min-height:260px;font-family:ui-monospace,monospace;font-size:12px;background:#0f1115;color:#e6e6e6;border:1px solid #2a3040;border-radius:8px;padding:10px"></textarea>
+
+<script>
+(function(){
+  function $(id){ return document.getElementById(id) }
+  function tomorrow(){
+    const d=new Date(Date.now()+86400000)
+    return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')
+  }
+  function today(){
+    const d=new Date()
+    return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')
+  }
+  async function call(args){
+    const body=new FormData()
+    body.set('name','life.plan')
+    body.set('args',JSON.stringify(args))
+    const r=await fetch('/api/capabilities/call',{method:'POST',body})
+    const j=await r.json()
+    if(!j.ok) throw new Error(j.error||'调用失败')
+    const inner=j.result||{}
+    if(inner.ok===false) throw new Error(inner.error||'插件返回失败')
+    return inner.data||{}
+  }
+  function render(items){
+    const box=$('life-preview')
+    if(!items||!items.length){ box.textContent='（还没有时间表）'; return }
+    let h='<table><thead><tr><th>时间</th><th>在做什么</th><th>心情</th><th>精力</th></tr></thead><tbody>'
+    for(const it of items){
+      h+='<tr><td>'+it.start+' - '+it.end+'</td><td>'+String(it.activity||'')+'</td><td>'+String(it.mood||'')+'</td><td>'+it.energy+'</td></tr>'
+    }
+    box.innerHTML=h+'</tbody></table>'
+  }
+  async function load(){
+    try{
+      const d=await call({action:'get',date:$('life-date').value})
+      $('life-json').value=JSON.stringify(d.items||[],null,2)
+      render(d.items)
+    }catch(e){ $('life-msg').textContent='读取失败：'+e.message }
+  }
+  window.lifeLoad=load
+  window.lifeGenerate=async function(){
+    $('life-msg').textContent='生成中…'
+    try{
+      const d=await call({action:'generate',date:$('life-date').value})
+      $('life-json').value=JSON.stringify(d.items||[],null,2)
+      render(d.items)
+      $('life-msg').textContent='已生成，确认后点保存'
+    }catch(e){ $('life-msg').textContent='生成失败：'+e.message }
+  }
+  window.lifeSave=async function(){
+    try{
+      const items=JSON.parse($('life-json').value||'[]')
+      const d=await call({action:'save',date:$('life-date').value,items})
+      render(d.items)
+      $('life-msg').textContent='已保存'
+    }catch(e){ $('life-msg').textContent='保存失败：'+e.message }
+  }
+  $('life-date').value=tomorrow()
+  $('life-date').min=today()
+  load()
+})()
+</script>

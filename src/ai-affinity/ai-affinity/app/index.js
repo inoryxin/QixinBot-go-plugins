@@ -110,6 +110,8 @@ function payload(userID, row) {
     tone: toneOf(score, base, mastered),
     level: l.level,
     title: l.title,
+    note: row.note || '',
+    relation: row.note || l.title,
   }
 }
 
@@ -269,6 +271,15 @@ serve({
           const uid = Number(args?.user_id || 0)
           if (!uid) return { ok: false, error: '需要 user_id' }
           await addScore(uid, Number(args?.delta) || 0)
+          return { ok: true, data: payload(uid, await getRow(uid)) }
+        }
+        if (action === 'note' || action === 'relation') {
+          const uid = Number(args?.user_id || 0)
+          if (!uid) return { ok: false, error: '需要 user_id' }
+          const note = String(args?.note ?? args?.relation ?? '').trim()
+          await db('exec', `INSERT INTO affinity (user_id, score, note, updated) VALUES (?, 0, ?, ?)
+            ON CONFLICT(user_id) DO UPDATE SET note = excluded.note, updated = excluded.updated`,
+            [uid, note, Math.floor(Date.now() / 1000)])
           return { ok: true, data: payload(uid, await getRow(uid)) }
         }
         return { ok: false, error: `未知 action: ${action}` }

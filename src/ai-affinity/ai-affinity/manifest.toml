@@ -29,7 +29,7 @@ required = ["action"]
 
 [capability.parameters.properties.action]
 type = "string"
-enum = ["list", "top", "get", "set", "add"]
+enum = ["list", "top", "get", "set", "add", "note", "relation"]
 
 [capability.parameters.properties.user_id]
 type = "number"
@@ -39,6 +39,9 @@ type = "number"
 
 [capability.parameters.properties.delta]
 type = "number"
+
+[capability.parameters.properties.note]
+type = "string"
 
 [capability.parameters.properties.limit]
 type = "number"
