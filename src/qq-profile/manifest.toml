@@ -1,0 +1,156 @@
+id = "qq-profile"
+name = "QQ 资料"
+version = "1.0.0"
+apiVersion = "1.x"
+exec = ["node", "app/index.js"]
+description = "改昵称/签名/头像，发 QQ 空间说说，偶尔自己发伤感说说"
+permissions = ["onebot.admin", "onebot.dangerous"]
+
+[access]
+require_prefix = false
+require_mention = false
+
+[[commands]]
+id = "profile.nickname"
+usage = "改昵称 <名字>"
+description = "修改机器人 QQ 昵称"
+aliases = ["改名"]
+require_prefix = false
+
+[[commands]]
+id = "profile.signature"
+usage = "改签名 <文本>"
+description = "修改机器人 QQ 个性签名"
+aliases = ["签名"]
+require_prefix = false
+
+[[commands]]
+id = "profile.avatar"
+usage = "改头像"
+description = "把回复的图片设为头像"
+aliases = ["换头像"]
+require_prefix = false
+
+[[commands]]
+id = "profile.qzone"
+usage = "发说说 <文本>"
+description = "发一条 QQ 空间说说，可附图片"
+aliases = ["说说"]
+require_prefix = false
+
+[[settings]]
+key = "ownerQQ"
+label = "允许操作的 QQ"
+type = "string"
+default = ""
+hint = "留空表示所有人可用；建议填自己"
+
+[[settings]]
+key = "ugcRight"
+label = "说说可见范围"
+type = "number"
+default = 1
+hint = "1 所有人 / 4 好友 / 64 仅自己"
+
+[[settings]]
+key = "autoEnabled"
+label = "自动发说说"
+type = "bool"
+default = false
+hint = "按间隔自动发伤感说说"
+
+[[settings]]
+key = "minDays"
+label = "最短间隔（天）"
+type = "number"
+default = 2
+min = 1
+
+[[settings]]
+key = "maxDays"
+label = "最长间隔（天）"
+type = "number"
+default = 4
+min = 1
+
+[[settings]]
+key = "activeStart"
+label = "开始时间（小时）"
+type = "number"
+default = 9
+min = 0
+max = 23
+
+[[settings]]
+key = "activeEnd"
+label = "结束时间（小时）"
+type = "number"
+default = 23
+min = 0
+max = 23
+
+[[settings]]
+key = "autoStyle"
+label = "自动说说风格"
+type = "string"
+default = ""
+hint = "留空使用内置伤感风"
+
+[[tools]]
+name = "set_qq_nickname"
+description = "修改机器人自己的 QQ 昵称。用户说「把名字改成 xxx」时调用。"
+
+[tools.parameters]
+type = "object"
+required = ["name"]
+
+[tools.parameters.properties.name]
+type = "string"
+description = "新昵称"
+
+[[tools]]
+name = "set_qq_signature"
+description = "修改机器人自己的 QQ 个性签名。用户说「签名改成 xxx」时调用。"
+
+[tools.parameters]
+type = "object"
+required = ["text"]
+
+[tools.parameters.properties.text]
+type = "string"
+description = "新签名"
+
+[[tools]]
+name = "set_qq_avatar"
+description = "修改机器人自己的 QQ 头像。用户给图片链接并说「换成这个头像」时调用。"
+
+[tools.parameters]
+type = "object"
+required = ["url"]
+
+[tools.parameters.properties.url]
+type = "string"
+description = "图片 URL"
+
+[[tools]]
+name = "post_qzone"
+description = "发一条 QQ 空间说说，支持纯文字或图文。用户说「发个说说 / 发条动态」时调用。"
+
+[tools.parameters]
+type = "object"
+required = ["text"]
+
+[tools.parameters.properties.text]
+type = "string"
+description = "说说正文"
+
+[tools.parameters.properties.image_url]
+type = "string"
+description = "可选图片 URL"
+
+[[tools]]
+name = "qzone_auto_status"
+description = "查看自动发说说的开关、下次时间和上次内容。用户问「你什么时候自己发说说」时调用。"
+
+[tools.parameters]
+type = "object"
