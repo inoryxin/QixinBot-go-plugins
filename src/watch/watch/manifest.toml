@@ -1,0 +1,66 @@
+id = "watch"
+name = "祈歆状态"
+version = "1.0.0"
+apiVersion = "1.x"
+exec = ["node", "app/index.js"]
+description = "视奸祈歆 / 祈歆在干嘛 — 读取 home.inory.xin 状态页"
+priority = 10  # 排在 AI 聊天前面，命中状态指令就先回
+
+[access]
+require_prefix = false
+require_mention = false
+
+[[commands]]
+id = "watch.qixin"
+usage = "视奸祈歆"
+aliases = ["视奸许雪然", "祈歆在干嘛", "许雪然在干嘛", "雪然在干嘛", "祈歆状态"]
+description = "查看祈歆当前状态与设备"
+
+[[settings]]
+key = "endpoint"
+label = "状态接口"
+type = "string"
+default = "https://home.inory.xin:9010/query"
+
+[[settings]]
+key = "pageUrl"
+label = "展示页地址（留空则回复不带链接）"
+type = "string"
+default = ""
+
+[[settings]]
+key = "title"
+label = "标题"
+type = "string"
+default = "祈歆"
+
+[[settings]]
+key = "template"
+label = "消息模板"
+type = "string"
+default = "🛰 {title} · {status}\n{desc}\n🕒 更新于 {time}\n\n{devices}\n\n{url}"
+
+[[settings]]
+key = "showDevices"
+label = "显示设备"
+type = "bool"
+default = true
+
+[[settings]]
+key = "aliases"
+label = "别名（逗号分隔）"
+type = "string"
+default = "祈歆,许雪然,雪然,祈歆酱,小祈歆"
+
+[[settings]]
+key = "actions"
+label = "动作词（逗号分隔）"
+type = "string"
+default = "在干嘛,干嘛呢,在不在,在吗,干啥呢,状态,怎么样"
+
+[[tools]]
+name = "get_qixin_status"
+description = "查询祈歆（许雪然）当前是否在线、状态和正在使用的设备。用户问「祈歆在干嘛/雪然在线吗/她睡了没」时调用。"
+
+[tools.parameters]
+type = "object"
