@@ -1303,7 +1303,7 @@ data/deps/node/node_modules
 | `qrcode` | 1.5.4 |
 | `jimp` | 1.6.1 |
 
-**Python 3.12.10**
+**Python 3.12（Windows 3.12.10 / Linux 3.12.15）**
 
 | 包 | 版本 |
 |---|---|
@@ -1327,8 +1327,8 @@ data/deps/node/node_modules
 | lxml | 6.1.3 |
 | cryptography | 50.0.2 |
 
-> 这张表就是"不要重复打包"的清单。表里有的，插件里**不要再带一份**。
-> Linux 运行时包还在做；做完后清单会补进来。
+> 这张表是 Windows 包的实测清单；Linux 包已打包，版本略有差异（Pillow 12.2 / numpy 2.2.6）。
+> 表里有的，插件里**不要再带一份**。
 
 ### 插件包只准打包纯代码
 
@@ -1371,7 +1371,7 @@ version = "^0.34"
 2. 运行时/共享里有满足的版本 → 直接用
 3. 都没有 → 插件进入 `failed`，管理员在「依赖」页手动装
 
-`download = true` 是**预留**能力：
+`download = true` 表示允许框架自动装：
 
 ```toml
 [[requires]]
@@ -1382,8 +1382,10 @@ download = true
 hashes = ["sha256:..."]
 ```
 
-当前版本还不会自动下载；带 `download = true` 的插件缺依赖时同样进审核/手动安装，
-后续才接自动下载。**运行时不联网装包**。
+- 插件启动时发现缺这个包 → 自动装到**插件自己的 deps/**
+- 安装失败 → 插件进 `failed`，错误显示在依赖页
+- 没写 `download = true` → **不自动下载**，进「安装失败 / 缺依赖」，管理员手动补
+- 依赖安装只发生在启动/安装阶段，运行中不再联网装包
 
 ### 管理员兜底
 
@@ -1422,12 +1424,16 @@ platform = "windows-x64"
 - 当前平台自动设为运行时；平台不匹配只存不用
 - 下载按钮只下载我们发布的完整运行时包，不下载 nodejs.org / python.org 裸解释器
 
-当前已打包 Windows：
+当前已打包 4 个：
 
 ```
-runtime-node-windows-x64.anzu     Node 24.20.0
-runtime-python-windows-x64.anzu   Python 3.12.10
+runtime-node-windows-x64.anzu     Node 24.20.0     80MB
+runtime-node-linux-x64.anzu       Node 24.20.0    106MB
+runtime-python-windows-x64.anzu   Python 3.12.10   73MB
+runtime-python-linux-x64.anzu     Python 3.12.15  218MB
 ```
+
+下载入口暂未开放；开放后只提供这 4 个完整包，不下载官方裸解释器。
 
 ## 6.2 共享数据
 
