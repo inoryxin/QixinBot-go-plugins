@@ -57,15 +57,16 @@ GET  /file?path=...      读取 PC 文件
 ```text
 电脑                     状态
 截图                     截屏
-电脑操作 开机/通电/断电/关机/重启/睡眠/休眠/锁屏/注销
+电脑操作 重启/睡眠/休眠/锁屏/注销
 进入大肥鱼模式           唤醒 DSH，连接 ACP，接管私聊
-退出大肥鱼模式 [并关机]
+退出大肥鱼模式
 新会话 / 会话列表 / 切换 n / 切换大肥鱼
 ```
 
-工具：`get_pc_status`、`pc_screenshot`、`pc_action`、`pc_power_on`、`get_dsh_status`。
+工具：`get_pc_status`、`pc_screenshot`、`pc_action`、`get_dsh_status`。
 
-`电脑操作 开机`/`通电` 通过 Home Assistant 插座 `switch.turn_on`；`断电` 用 `switch.turn_off`。光网卡没有 WOL，不需要也不使用 WOL。
+开关机不在这个插件里做——日常开关机用 `home-assistant` 插件。
+只有 `进入大肥鱼模式` 会在检测到电脑没开时，自动通过 HA 插座通电。
 
 ## 和旧插件的区别
 

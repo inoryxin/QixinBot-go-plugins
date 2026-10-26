@@ -129,15 +129,6 @@ async function agent(pathName, init = {}) {
   return type.includes('application/json') ? r.json() : Buffer.from(await r.arrayBuffer())
 }
 
-async function haPower(on) {
-  const entity = String(settings.haEntity || 'switch.lemesh_cn_1117316460_sw0a04_on_p_2_1')
-  const state = await haRequest('GET', `/api/states/${encodeURIComponent(entity)}`)
-  const currentlyOn = state.state === 'on'
-  if (currentlyOn === on) return { changed: false, state: state.state }
-  await haRequest('POST', `/api/services/switch/${on ? 'turn_on' : 'turn_off'}`, { entity_id: entity })
-  return { changed: true, state: on ? 'on' : 'off' }
-}
-
 function gb(bytes) { return `${(Number(bytes) / 1024 ** 3).toFixed(1)} GB` }
 function uptime(sec) {
   const d = Math.floor(sec / 86400), h = Math.floor((sec % 86400) / 3600)
@@ -254,18 +245,13 @@ async function enter(session) {
   } finally { busy = false }
 }
 
-async function exit(session, shutdown) {
+async function exit(session) {
   mode = 'idle'
   try { acp?.close() } catch {}
   acp = null
   sessionId = ''
   await saveState({ active: false, sessionId: '' })
-  if (shutdown) {
-    try { await agent('/action?action=shutdown', { method: 'POST', timeout: 10000 }); await host.reply(chatOf(session), '已退出，电脑关机指令已发送。') }
-    catch (e) { await host.reply(chatOf(session), `已退出，但关机失败：${e.message}`) }
-  } else {
-    await host.reply(chatOf(session), '已退出大肥鱼模式，聊天交回给我。')
-  }
+  await host.reply(chatOf(session), '已退出大肥鱼模式，聊天交回给我。')
 }
 
 async function relay(session, text) {
@@ -359,19 +345,9 @@ serve({
         await sendScreenshot(session)
         return { handled: true }
       }
-      const act = /^电脑操作\s*(开机|通电|断电|关机|重启|睡眠|休眠|锁屏|注销)$/.exec(text)
+      const act = /^电脑操作\s*(重启|睡眠|休眠|锁屏|注销)$/.exec(text)
       if (act) {
-        if (act[1] === '开机' || act[1] === '通电') {
-          const r = await haPower(true)
-          await host.reply(chatOf(session), r.changed ? '插座已通电，电脑开始启动…' : '插座本来就是通电的。')
-          return { handled: true }
-        }
-        if (act[1] === '断电') {
-          const r = await haPower(false)
-          await host.reply(chatOf(session), r.changed ? '插座已断电。' : '插座本来就是断电的。')
-          return { handled: true }
-        }
-        const map = { 关机: 'shutdown', 重启: 'restart', 睡眠: 'sleep', 休眠: 'hibernate', 锁屏: 'lock', 注销: 'logoff' }
+        const map = { 重启: 'restart', 睡眠: 'sleep', 休眠: 'hibernate', 锁屏: 'lock', 注销: 'logoff' }
         await agent(`/action?action=${map[act[1]]}`, { method: 'POST', timeout: 10000 })
         await host.reply(chatOf(session), `已发送「${act[1]}」指令。`)
         return { handled: true }
@@ -380,8 +356,8 @@ serve({
         await enter(session)
         return { handled: true }
       }
-      if (/^退出大肥鱼模式(并关机)?$/.test(text)) {
-        await exit(session, /并关机$/.test(text))
+      if (/^退出大肥鱼模式$/.test(text)) {
+        await exit(session)
         return { handled: true }
       }
       if (/^新会话$/.test(text)) {
@@ -425,14 +401,6 @@ serve({
       if (name === 'pc_screenshot') {
         const buf = await agent('/screen', { timeout: 30000 })
         return { ok: true, data: { image: buf.toString('base64') } }
-      }
-      if (name === 'pc_power_on') {
-        const r = await haPower(true)
-        return { ok: true, data: { text: r.changed ? '插座已通电' : '插座本来就是通电的' } }
-      }
-      if (name === 'pc_power_off') {
-        const r = await haPower(false)
-        return { ok: true, data: { text: r.changed ? '插座已断电' : '插座本来就是断电的' } }
       }
       if (name === 'pc_action') {
         await agent(`/action?action=${encodeURIComponent(args?.action || '')}`, { method: 'POST', timeout: 10000 })

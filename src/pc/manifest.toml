@@ -3,7 +3,7 @@ name = "电脑"
 version = "1.0.0"
 apiVersion = "1.x"
 exec = ["node", "app/index.js"]
-description = "一台 PC 一个管家：状态、截图、关机/重启/锁屏、唤醒 DSH 并把 QQ 聊天交给 DSH"
+description = "一台 PC 一个管家：状态、截图、重启/睡眠/锁屏、唤醒 DSH 并把 QQ 聊天交给 DSH"
 priority = 10
 permissions = ["onebot.dangerous"]
 
@@ -23,7 +23,7 @@ description = "截取这台 PC 的当前屏幕"
 
 [[commands]]
 id = "pc.action"
-usage = "电脑操作 <开机|通电|断电|关机|重启|睡眠|锁屏|注销>"
+usage = "电脑操作 <重启|睡眠|休眠|锁屏|注销>"
 description = "操作这台 PC"
 
 [[commands]]
@@ -33,8 +33,8 @@ description = "唤醒 DSH（web + ACP 桥），把私聊交给 DSH"
 
 [[commands]]
 id = "pc.dsh.exit"
-usage = "退出大肥鱼模式 [并关机]"
-description = "退出 DSH 接管；可选关机"
+usage = "退出大肥鱼模式"
+description = "退出 DSH 接管，聊天交回 OneBot"
 
 [[commands]]
 id = "pc.dsh.new"
@@ -72,7 +72,7 @@ type = "object"
 
 [[tools]]
 name = "pc_action"
-description = "操作老公这台 Windows PC：关机、重启、睡眠、锁屏、注销。"
+description = "操作老公这台 Windows PC：重启、睡眠、锁屏、注销（开关机交给 Home Assistant 插件）。"
 
 [tools.parameters]
 type = "object"
@@ -80,21 +80,7 @@ required = ["action"]
 
 [tools.parameters.properties.action]
 type = "string"
-enum = ["shutdown", "restart", "sleep", "hibernate", "lock", "logoff"]
-
-[[tools]]
-name = "pc_power_on"
-description = "通过 Home Assistant 智能插座给老公的电脑通电。"
-
-[tools.parameters]
-type = "object"
-
-[[tools]]
-name = "pc_power_off"
-description = "通过 Home Assistant 智能插座给老公的电脑断电。"
-
-[tools.parameters]
-type = "object"
+enum = ["restart", "sleep", "hibernate", "lock", "logoff"]
 
 [[tools]]
 name = "get_dsh_status"
