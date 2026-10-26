@@ -3,7 +3,7 @@
 把原来的 `pc-status`（状态/截图）和 `dsh-mode`（唤醒 DSH、接管 QQ）合并成：
 
 ```
-PC 上一个程序：tools/pc-agent/pc-agent.js
+PC 上一个程序：tools/pc-agent/pc-agent.exe（Go）
 框架一个插件：dist/pc
 ```
 
@@ -71,7 +71,7 @@ GET  /file?path=...      读取 PC 文件
 ## 和旧插件的区别
 
 - 不再需要单独跑 `pc-hub`、`pc-agent`、`dsh-watchdog`、`dsh-mode`
-- 一个 agent 负责状态、截图、PC 操作、DSH 唤醒
+- 一个 Go agent 负责状态、截图、PC 操作、DSH 唤醒
 - 一个插件负责 QQ 命令和 DSH 接管
 - DSH 重连状态存 `host.storage`，框架重启后自动尝试接回
 

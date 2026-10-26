@@ -78,7 +78,7 @@ function haRequest(method, pathName, body) {
 async function ensureWindows(session) {
   const pcHost = settings.pcHost || '10.0.0.99'
   try {
-    await agent('/status', { timeout: 5000 })
+    await agent('/status', { timeout: 25000 })
     return true
   } catch {}
 
@@ -88,7 +88,7 @@ async function ensureWindows(session) {
     await host.reply(chatOf(session), 'Windows 已开机，等 PC 管家启动…')
     const deadline = Date.now() + (Number(settings.agentWaitMs) || 60000)
     while (Date.now() < deadline) {
-      try { await agent('/status', { timeout: 4000 }); return true } catch {}
+      try { await agent('/status', { timeout: 10000 }); return true } catch {}
       await sleep(3000)
     }
     throw new Error('Windows 开着，但 PC 管家没起来')
@@ -112,7 +112,7 @@ async function ensureWindows(session) {
   await host.reply(chatOf(session), '等 Windows 重启（大约一分钟）…')
   const deadline = Date.now() + (Number(settings.bootTimeoutMs) || 180000)
   while (Date.now() < deadline) {
-    try { await agent('/status', { timeout: 5000 }); return true } catch {}
+    try { await agent('/status', { timeout: 25000 }); return true } catch {}
     await sleep(5000)
   }
   throw new Error('Windows PC 管家没起来')
@@ -176,7 +176,10 @@ async function connectAcp(resume) {
     const client = new AcpTcpClient({ host: settings.acpHost, port: Number(settings.acpPort) || 3099, token: settings.acpToken || '111111' })
     try {
       await client.connect(10000)
-      await client.initialize()
+      await Promise.race([
+        client.initialize(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('ACP 初始化超时（10s）')), 10000)),
+      ])
       let id
       if (resume) {
         try { id = await client.resumeSession(resume, settings.workspace) }

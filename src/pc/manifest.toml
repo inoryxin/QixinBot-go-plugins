@@ -7,6 +7,10 @@ description = "一台 PC 一个管家：状态、截图、重启/睡眠/锁屏�
 priority = 10
 permissions = ["onebot.dangerous"]
 
+[timeouts]
+message = "15m"
+call = "30m"
+
 [access]
 require_prefix = false
 require_mention = false
