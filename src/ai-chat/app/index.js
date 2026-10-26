@@ -1577,6 +1577,12 @@ serve({
   // 只存文字/图片占位，命令不存（前缀消息不是聊天语料）。
   async observe_message({ session }) {
     try {
+      if (session.chat_type === 'private') {
+        try {
+          const dsh = await host.sharedGet('pc.dsh_active')
+          if (dsh === true || dsh === 'true') return {}
+        } catch {}
+      }
       await ensureReady()
       if (session.has_prefix) return {}
       const text = (session.text || '').trim()
