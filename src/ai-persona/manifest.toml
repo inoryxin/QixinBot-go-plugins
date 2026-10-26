@@ -1,6 +1,6 @@
 id = "ai-persona"
 name = "人设"
-version = "1.1.2"
+version = "1.1.3"
 apiVersion = "1.x"
 exec = ["node", "app/index.js"]
 description = "管 AI 的系统提示词和人设：说谁、怎么说话、群聊/私聊各用哪套；含贴吧鱼模式（按群开关，切换后改用吧友口吻 + 语料库抽样）"

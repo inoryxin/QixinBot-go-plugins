@@ -130,14 +130,17 @@ async function render(chatType, chatID) {
   if (p?.content) parts.push(`当前人设「${p.name}」：${p.content}`)
   if (settings.speaking_style) parts.push(`说话风格：${settings.speaking_style}`)
 
-  // 群语气和黑话：从 AI 聊天插件的 ai.learn 能力取。
-  // 取不到（没装/没语料）就跳过，绝不影响对话。
-  const flavor = await groupFlavor(chatType, chatID)
-  if (flavor.length) parts.push(...flavor)
-
   // 贴吧鱼模式：只对这个会话开着时追加（口吻 + 本轮语料抽样）
   const tiebaParts = tieba?.promptParts(chatType, chatID) || []
-  if (tiebaParts.length) parts.push(...tiebaParts)
+  const tiebaOn = tiebaParts.length > 0
+
+  // 群语气和黑话：从 AI 聊天插件的 ai.learn 能力取。
+  // 取不到（没装/没语料）就跳过，绝不影响对话。
+  // 贴吧模式不读原群的语气统计（那是"原记忆"的一部分，会把腔调拉回去）。
+  const flavor = tiebaOn ? [] : await groupFlavor(chatType, chatID)
+  if (flavor.length) parts.push(...flavor)
+
+  if (tiebaOn) parts.push(...tiebaParts)
 
   return {
     scope,

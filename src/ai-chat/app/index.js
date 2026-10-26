@@ -63,6 +63,20 @@ async function ensureSchema() {
   // 按会话查
   await db('exec', `CREATE INDEX IF NOT EXISTS idx_msg_chat ON ai_message(chat_type, chat_id, id)`)
 
+  // 贴吧鱼模式的**独立记忆**：开模式时的对话只进这张表，
+  // 不读也不写 ai_message，切回正常也不会串味。
+  await db('exec', `
+    CREATE TABLE IF NOT EXISTS ai_tieba_message (
+      id        INTEGER PRIMARY KEY AUTOINCREMENT,
+      chat_type TEXT    NOT NULL,
+      chat_id   INTEGER NOT NULL,
+      user_id   INTEGER NOT NULL,
+      role      TEXT    NOT NULL,
+      content   TEXT    NOT NULL,
+      ts        INTEGER NOT NULL
+    )`)
+  await db('exec', `CREATE INDEX IF NOT EXISTS idx_tmsg_chat ON ai_tieba_message(chat_type, chat_id, id)`)
+
   // 记住每个人的最新昵称：换群改名也能对上号
   await db('exec', `
     CREATE TABLE IF NOT EXISTS ai_user (
@@ -126,13 +140,17 @@ async function inTiebaMode(session) {
 }
 
 async function remember(session, role, content) {
-  // 贴吧鱼模式开着时整段不进记忆：那种嘴臭台词存下来，
-  // 切回正常人设后模型会照着上一轮的语气接，容易出事。
+  const uid = role === 'user' ? session.user_id : session.self_id || 0
+  // 贴吧鱼模式：写进独立表，不动 ai_message（切回正常后不会串味）
   if (await inTiebaMode(session)) {
-    host.log('debug', `贴吧鱼模式：跳过记忆写入（${role}）`)
+    await db('exec',
+      `INSERT INTO ai_tieba_message (chat_type, chat_id, user_id, role, content, ts)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [session.chat_type, session.chat_id, uid, role, content, now()],
+    )
+    host.log('debug', `贴吧鱼模式：写入独立记忆（${role}）`)
     return
   }
-  const uid = role === 'user' ? session.user_id : session.self_id || 0
   await db('exec',
     `INSERT INTO ai_message (chat_type, chat_id, user_id, role, content, ts)
      VALUES (?, ?, ?, ?, ?, ?)`,
@@ -188,10 +206,11 @@ async function personalHistory(userID, limit, exclude = {}) {
   return (r.rows || []).reverse()
 }
 
-// 群上下文：这个会话最近的消息（所有人）
-async function chatHistory(chatType, chatID, limit) {
+// 群上下文：这个会话最近的消息（所有人）。tieba=true 时读贴吧模式的独立记忆
+async function chatHistory(chatType, chatID, limit, tieba = false) {
+  const table = tieba ? 'ai_tieba_message' : 'ai_message'
   const r = await db('all',
-    `SELECT user_id, role, content FROM ai_message
+    `SELECT user_id, role, content FROM ${table}
      WHERE chat_type = ? AND chat_id = ?
      ORDER BY id DESC LIMIT ?`,
     [chatType, chatID, limit],
@@ -970,8 +989,9 @@ async function buildMessages(session, userText, extraPrompt, images) {
   // 固定带 10 条的话，闲聊每轮都在为无关记忆付 token。
   const base = Math.max(0, Math.min(10, Number(settings.memory_base) || 3))
   const maxN = Math.max(base, Math.min(30, Number(settings.memory_max) || 15))
-  const personal = await recallPersonal(session, userText, base, maxN)
-  host.log('debug', `记忆召回 n=${personal.length} base=${base} max=${maxN}`)
+  // 贴吧模式：不读原记忆（跨会话个人记忆），只用它自己的独立上下文
+  const personal = tiebaOn ? [] : await recallPersonal(session, userText, base, maxN)
+  host.log('debug', `记忆召回 n=${personal.length} base=${base} max=${maxN} tieba=${tiebaOn}`)
   if (personal.length) {
     const lines = personal
       .map((m) => `- [${m.chat_type === 'private' ? '私聊' : '群'}] ${m.content.replace(/\n/g, ' ')}`)
@@ -987,15 +1007,13 @@ async function buildMessages(session, userText, extraPrompt, images) {
   // ② 群上下文：最近这段对话
   // 群里只带最近 N 条（默认 20）：带整段历史既费 token 又容易跑题
   const ctxSize = Math.max(4, Math.min(50, Number(settings.context_size) || 20))
-  const history = await chatHistory(session.chat_type, session.chat_id, ctxSize)
+  const history = await chatHistory(session.chat_type, session.chat_id, ctxSize, tiebaOn)
   const names = await nicknamesOf(history.map((m) => m.user_id))
 
   for (const m of history) {
     // 群里的纯图片占位不进上下文：占 token 又提供不了信息
     // （私聊的图片会存描述，不会走到这里）
     if (session.chat_type !== 'private' && m.role === 'user' && m.content === '[图片]') continue
-    // 贴吧模式：只带群友发言，机器人以前的软话会把这一轮的语气带跑
-    if (tiebaOn && m.role === 'assistant') continue
 
     if (m.role === 'assistant') {
       messages.push({ role: 'assistant', content: m.content })
