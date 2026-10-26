@@ -7,7 +7,7 @@ let settings = {}
 let timer
 
 function owner() {
-  return String(settings.ownerQQ || '').trim()
+  return String(settings.ownerQQ || process.env.QIXIN_OWNER || '').trim()
 }
 
 function isOwner(session) {

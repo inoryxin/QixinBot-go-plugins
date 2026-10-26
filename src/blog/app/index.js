@@ -8,7 +8,7 @@ const DEFAULTS = {
   category: '',
   uploadToken: 'qixin-blog-upload-2026',
   aiStyle: '自然、简短、像个人博客',
-  ownerQQ: '2849446053',
+  ownerQQ: '',
 }
 
 let settings = {}
@@ -217,7 +217,7 @@ serve({
 
   async handle_message({ session }) {
     if (settings.enabled === false || settings.enabled === 'false') return { handled: false }
-    const owner = String(settings.ownerQQ || '').trim()
+    const owner = String(settings.ownerQQ || process.env.QIXIN_OWNER || '').trim()
     if (owner && session.role !== 'owner' && String(session.user_id) !== owner) return { handled: false }
 
     const text = String(session.text || '').trim()

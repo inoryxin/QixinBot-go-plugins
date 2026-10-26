@@ -5,8 +5,6 @@ apiVersion = "1.x"
 exec = ["node", "app/index.js"]
 description = "随机推荐吃的喝的，中午/晚上提醒吃饭，支持自定义菜谱"
 
-# 低频插件：闲置后回收进程，有人用再拉起
-idle_stop = "1h"
 
 permissions = ["onebot.write"]
 
@@ -78,6 +76,7 @@ key = "ownerQQ"
 label = "提醒发给谁"
 type = "string"
 default = ""
+hint = "留空 = 使用框架 [owner] users（QIXIN_OWNER）"
 
 [[settings]]
 key = "remindGroups"

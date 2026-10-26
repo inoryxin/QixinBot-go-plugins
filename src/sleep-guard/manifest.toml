@@ -50,7 +50,8 @@ min = 5
 key = "userId"
 label = "主人的 QQ"
 type = "string"
-default = "2849446053"
+default = ""
+hint = "留空 = 使用框架 [owner] users（QIXIN_OWNER）"
 
 [[settings]]
 key = "statusUrl"

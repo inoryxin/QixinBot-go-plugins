@@ -29,7 +29,7 @@ required = ["action"]
 
 [capability.parameters.properties.action]
 type = "string"
-enum = ["list", "top", "get", "set", "add"]
+enum = ["list", "top", "get", "set", "add", "note", "relation"]
 
 [capability.parameters.properties.user_id]
 type = "number"
@@ -39,6 +39,9 @@ type = "number"
 
 [capability.parameters.properties.delta]
 type = "number"
+
+[capability.parameters.properties.note]
+type = "string"
 
 [capability.parameters.properties.limit]
 type = "number"
@@ -101,7 +104,7 @@ key = "master_qq"
 label = "主人 QQ（好感永远满）"
 type = "string"
 default = ""
-hint = "逗号分隔；主人骂你也当调情"
+hint = "逗号分隔；留空 = 使用框架 [owner] users（QIXIN_OWNER）"
 
 [[settings]]
 key = "judge_enabled"

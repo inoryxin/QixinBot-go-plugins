@@ -64,8 +64,8 @@ default = "自然、简短、像个人博客"
 key = "ownerQQ"
 label = "允许使用的 QQ"
 type = "string"
-default = "2849446053"
-hint = "留空表示所有人可用"
+default = ""
+hint = "留空 = 使用框架 [owner] users（QIXIN_OWNER）"
 
 [[tools]]
 name = "publish_blog"

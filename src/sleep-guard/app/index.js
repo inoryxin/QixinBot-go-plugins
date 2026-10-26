@@ -134,7 +134,7 @@ async function check() {
     host.log('info', '催睡：主人已经睡了')
     return { skipped: 'asleep' }
   }
-  const ai = await nudge(settings.userId, instructionFor(plan.action, devices, now))
+  const ai = await nudge(settings.userId || process.env.QIXIN_OWNER, instructionFor(plan.action, devices, now))
   if (plan.action === 'first') state.firstAt = now.getTime()
   if (plan.action === 'second') state.secondAt = now.getTime()
   await host.storage.set('state', state)
@@ -166,7 +166,7 @@ serve({
   async handle_message({ session }) {
     const text = String(session.text || '').trim().replace(/^\//, '')
     if (text !== '催睡') return { handled: false }
-    const owner = String(settings.userId || '')
+    const owner = String(settings.userId || process.env.QIXIN_OWNER || '').trim()
     if (owner && session.role !== 'owner' && String(session.user_id) !== owner) {
       await host.reply({ account: session.account, chat_type: session.chat_type, chat_id: session.chat_id }, '这个只有老公能按。')
       return { handled: true }
