@@ -250,6 +250,8 @@ Python 插件加载时如果环境不满足，状态会是 `missing_runtime`，�
 
 旧的 `onebot-bot` 计划任务已禁用，避免抢 `7801`。
 
+SnowLuma 必须开自动注入：`config/runtime.json` 里 `hookAutoLoad: true`，启动脚本里也设 `SNOWLUMA_HOOK_AUTOLOAD=1`；否则开机后要手动「进程注入」，3001 不会自己起来。
+
 **QQ 必须勾选「自动登录」**。Windows 自动登录只负责进入桌面，不会替 QQ 登录账号；
 没勾选的话，断电后 QQ 会停在登录窗口，SnowLuma 就不会监听 3001。
 
