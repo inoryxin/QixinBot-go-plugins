@@ -33,8 +33,9 @@ powershell -ExecutionPolicy Bypass -File tools\pc-agent\install.ps1
 4. 请求 `http://10.0.0.99:22222/launch?token=111111&app=reboot` 切 Windows
 5. 等 Windows 启动、PC 管家上线
 6. Windows 起来后 Go 管家按人的方式执行：`cd /d D:\deepseek\deepseek-harness` → `pnpm dsh web`（会弹浏览器）
-7. 再拉起 ACP 桥（`dsh-acp-bridge.vbs` / `/ensure-dsh`），插件连上 ACP，接管私聊
-8. 如果 Windows 开着但管家被误杀：先看 3389/445，等 VBS 把管家拉回来，不会误走 HA 重启
+7. ACP 桥由登录启动项 `dsh-acp-bridge.vbs` 负责；Go 管家只检查 3099，不重复拉起（重复起桥会让 DSH ACP 子进程退出）
+8. 插件连上 ACP，接管私聊
+9. 如果 Windows 开着但管家被误杀：先看 3389/445，等 VBS 把管家拉回来，不会误走 HA 重启
 
 配置项：`haUrl`、`haToken`、`haEntity`、`archPort`、`archLaunchUrl`、`bootTimeoutMs`。
 
@@ -45,7 +46,7 @@ GET  /healthz
 GET  /status          CPU/内存/磁盘/电池/DSH 状态
 GET  /screen          当前屏幕 JPEG
 GET  /dsh-url         DSH 带 token 的地址
-POST /ensure-dsh?web=1   先 pnpm dsh web（3080），再启动 ACP 桥（3099）
+POST /ensure-dsh?web=1   按需 pnpm dsh web（3080）；ACP 桥由登录启动项负责
 POST /open?url=...       打开浏览器
 POST /action?action=shutdown|restart|sleep|hibernate|lock|logoff
 POST /shell              token 保护的 PowerShell（插件默认不调用）

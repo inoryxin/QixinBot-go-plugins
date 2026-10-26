@@ -196,24 +196,11 @@ func ensureDSH(withWeb bool) map[string]any {
         }
     }
 
-    if !portOpen(3099, 500*time.Millisecond) {
-        launcher := filepath.Join(dshHome, "dsh-acp-bridge.vbs")
-        bridge := filepath.Join(dshHome, "acp-bridge.js")
-        if _, err := os.Stat(launcher); err == nil {
-            if _, err := startDetached("cmd.exe", []string{"/c", "start", "", "wscript.exe", launcher}, home, "acp-bridge"); err == nil {
-                b["started"] = true
-            } else {
-                b["error"] = err.Error()
-            }
-        } else if _, err := os.Stat(bridge); err == nil {
-            if _, err := startDetached(nodePath(), []string{bridge}, dshHome, "acp-bridge", "DSH_ACP_TOKEN=111111", "DSH_ACP_PORT=3099", "DSH_META_PORT=3098", "DSH_HOME="+dshHome, "DSH_ACP_LOG="+filepath.Join(os.TempDir(), "acp-bridge.log")); err == nil {
-                b["started"] = true
-            } else {
-                b["error"] = err.Error()
-            }
-        } else {
-            b["error"] = "缺少 " + bridge
-        }
+    // ACP 桥由登录启动项 dsh-acp-bridge.vbs 负责；这里只检查，不重复拉起。
+    // Go 进程拉起桥时，DSH 的 ACP 子进程会因会话/终端环境不同而退出，反而把好桥弄坏。
+    b["ready"] = portOpen(3099, 500*time.Millisecond)
+    if !b["ready"].(bool) {
+        b["error"] = "ACP 桥未启动（登录启动项 dsh-acp-bridge.vbs 未运行）"
     }
     b["ready"] = waitPort(3099, 20*time.Second)
     return res

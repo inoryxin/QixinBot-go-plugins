@@ -164,11 +164,13 @@ async function dshServices(withWeb) {
 
 async function dshReady(withWeb) {
   try {
-    const st = await agent('/status', { timeout: 12000 })
+    const st = await agent('/status', { timeout: 15000 })
     if (st?.dsh?.web && st?.dsh?.bridge) {
-      return { bridge: { ready: true }, web: { ready: true, url: (await agent('/dsh-url', { timeout: 5000 })).url || '' } }
+      let url = ''
+      try { url = (await agent('/dsh-url', { timeout: 5000 })).url || '' } catch {}
+      return { bridge: { ready: true }, web: { ready: true, url } }
     }
-  } catch {}
+  } catch (e) { host.log('warn', `读取 DSH 状态失败: ${e.message}`) }
   return dshServices(withWeb)
 }
 
@@ -360,6 +362,7 @@ async function enter(session) {
   if (mode === 'starting') return host.reply(chatOf(session), '正在启动，等我一下。')
   mode = 'starting'
   busy = true
+  await host.sharedSet('pc.dsh_active', true)
   try {
     await host.reply(chatOf(session), '大肥鱼模式启动中，先检查你电脑开没开…')
     await ensureWindows(session)
@@ -368,12 +371,18 @@ async function enter(session) {
     if (!svc.bridge?.ready) throw new Error('ACP 桥没起来')
     const state = await readState()
     let id = ''
-    let usedDefault = false
-    if (state.defaultSessionId) {
-      try { id = await connectAcp(state.defaultSessionId); usedDefault = true } catch {}
+    let defaultId = state.defaultSessionId || ''
+    if (defaultId) {
+      let last
+      for (let attempt = 0; attempt < 3 && !id; attempt++) {
+        try { id = await connectAcp(defaultId) }
+        catch (e) { last = e; await sleep(2000) }
+      }
+      if (!id) throw new Error(`默认大肥鱼会话恢复失败：${last?.message || '未知错误'}`)
+    } else {
+      id = await connectAcp('')
+      defaultId = id
     }
-    if (!id) id = await connectAcp('')
-    const defaultId = usedDefault ? state.defaultSessionId : id
     await saveState({ active: true, sessionId: id, defaultSessionId: defaultId })
     await setSessionTitle(defaultId, '大肥鱼')
     await host.sharedSet('pc.dsh_active', true)
@@ -383,6 +392,7 @@ async function enter(session) {
     await host.reply(chatOf(session), `大肥鱼模式已接管，当前会话：${title}（${String(id).slice(0, 8)}）。\n发「新会话」「会话列表」「切换 n」；发「退出大肥鱼模式」还给我。`)
   } catch (e) {
     mode = 'idle'
+    await host.sharedSet('pc.dsh_active', false)
     try { acp?.close() } catch {}
     acp = null
     await host.reply(chatOf(session), `进入大肥鱼模式失败：${e.message}`)
