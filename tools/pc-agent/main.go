@@ -172,27 +172,50 @@ $g.Dispose();$bmp.Dispose()`, strings.ReplaceAll(file, "'", "''"))
 
 func ensureDSH(withWeb bool) map[string]any {
     res := map[string]any{"bridge": map[string]any{"ready": false, "started": false}, "web": map[string]any{"ready": false, "started": false, "url": ""}}
-    b := res["bridge"].(map[string]any); w := res["web"].(map[string]any)
+    b := res["bridge"].(map[string]any)
+    w := res["web"].(map[string]any)
+
+    // 先按人的方式打开 DSH web（pnpm dsh web，会弹浏览器），再起 ACP 桥。
+    // ACP 桥依赖 DSH web 的运行时，反过来先起桥会连不上。
+    if withWeb {
+        if !portOpen(3080, 500*time.Millisecond) {
+            if _, err := startDetached("cmd.exe", []string{"/c", "pnpm", "dsh", "web"}, repo, "dsh-web"); err == nil {
+                w["started"] = true
+            } else {
+                w["error"] = err.Error()
+            }
+        }
+        w["ready"] = waitPort(3080, 60*time.Second)
+        if w["ready"].(bool) {
+            w["url"] = readWebURL()
+        }
+    } else {
+        w["ready"] = portOpen(3080, 500*time.Millisecond)
+        if w["ready"].(bool) {
+            w["url"] = readWebURL()
+        }
+    }
+
     if !portOpen(3099, 500*time.Millisecond) {
         launcher := filepath.Join(dshHome, "dsh-acp-bridge.vbs")
         bridge := filepath.Join(dshHome, "acp-bridge.js")
         if _, err := os.Stat(launcher); err == nil {
-            if _, err := startDetached("wscript.exe", []string{launcher}, home, "acp-bridge"); err == nil { b["started"] = true } else { b["error"] = err.Error() }
+            if _, err := startDetached("cmd.exe", []string{"/c", "start", "", "wscript.exe", launcher}, home, "acp-bridge"); err == nil {
+                b["started"] = true
+            } else {
+                b["error"] = err.Error()
+            }
         } else if _, err := os.Stat(bridge); err == nil {
-            if _, err := startDetached(nodePath(), []string{bridge}, dshHome, "acp-bridge", "DSH_ACP_TOKEN=111111", "DSH_ACP_PORT=3099", "DSH_META_PORT=3098", "DSH_HOME="+dshHome); err == nil { b["started"] = true } else { b["error"] = err.Error() }
-        } else { b["error"] = "缺少 " + bridge }
-    }
-    b["ready"] = waitPort(3099, 15*time.Second)
-    if withWeb {
-        if !portOpen(3080, 500*time.Millisecond) {
-            if _, err := startDetached(nodePath(), []string{"--import", "tsx/esm", "apps/cli/src/bin.ts", "web", "--no-open"}, repo, "dsh-web", "DSH_HOME="+dshHome); err == nil { w["started"] = true }
+            if _, err := startDetached(nodePath(), []string{bridge}, dshHome, "acp-bridge", "DSH_ACP_TOKEN=111111", "DSH_ACP_PORT=3099", "DSH_META_PORT=3098", "DSH_HOME="+dshHome, "DSH_ACP_LOG="+filepath.Join(os.TempDir(), "acp-bridge.log")); err == nil {
+                b["started"] = true
+            } else {
+                b["error"] = err.Error()
+            }
+        } else {
+            b["error"] = "缺少 " + bridge
         }
-        w["ready"] = waitPort(3080, 45*time.Second)
-        w["url"] = readWebURL()
-    } else {
-        w["ready"] = portOpen(3080, 500*time.Millisecond)
-        if w["ready"].(bool) { w["url"] = readWebURL() }
     }
+    b["ready"] = waitPort(3099, 20*time.Second)
     return res
 }
 
