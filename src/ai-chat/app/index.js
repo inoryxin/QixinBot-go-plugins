@@ -980,7 +980,12 @@ async function buildMessages(session, userText, extraPrompt, images) {
     }
   }
 
-  parts.push('回复要短，一般一两句。不要用 Markdown 列表和标题。')
+  // 贴吧模式要打满输出（用户要求每轮 ≥30 字），其余场景保持"短"
+  if (tiebaOn) {
+    parts.push('每轮回复总字数不少于 30 字（分几条都算总字数），别只回一两个字或一个问号；不要用 Markdown 列表和标题。')
+  } else {
+    parts.push('回复要短，一般一两句。不要用 Markdown 列表和标题。')
+  }
 
   const messages = [{ role: 'system', content: parts.join('\n') }]
 
@@ -1487,6 +1492,22 @@ async function respond(session, userText, extraPrompt, images) {
     }
   }
 
+  // 贴吧模式：模型偶尔偷懒只回十几个字，补一轮把总字数顶到 30 以上
+  if (await inTiebaMode(session)) {
+    const count = (s) => String(s || '').replace(/\s/g, '').length
+    const shortLen = count(text)
+    if (shortLen < 30) {
+      host.log('info', `贴吧模式字数不足（${shortLen}），补一轮`)
+      messages.push({ role: 'assistant', content: text })
+      messages.push({ role: 'system', content: `刚才那句只有 ${shortLen} 字，太短。重新说一遍，至少 30 字，继续骂，别解释。` })
+      const r2 = await askLLM(messages, [])
+      if (r2.ok && r2.text) {
+        const t2 = r2.text.replace(/<<STICKER:[^>]+>>/g, '').trim()
+        if (count(t2) > shortLen) text = t2
+      }
+    }
+  }
+
   const delay = Math.max(0, Number(settings.reply_typing) || 0)
   if (delay > 0) await new Promise((res) => setTimeout(res, Math.min(delay, 3000)))
 
@@ -1567,8 +1588,10 @@ serve({
 
     // 纯图片群消息：不水群、不回复，但可以按偷图概率静默收藏
     // 有些协议端会把纯图消息的 text 填成 "[图片]" / "[动画表情]"，不能只看 text 是否为空
-    const trig = shouldTrigger(session)
-    host.log('info', 'H4 shouldTrigger=' + trig)
+    // 贴吧模式：不 @ 也回（80%），不受 @设置/冷却限制 —— 要的就是战斗
+    const tiebaOn = await inTiebaMode(session)
+    const trig = tiebaOn ? Math.random() * 100 < 80 : shouldTrigger(session)
+    host.log('info', `H4 shouldTrigger=${trig} tieba=${tiebaOn}`)
     if (!trig) return { handled: false }
 
     const cleaned = text.replace(/^@\S+\s*/, '').trim() || text
