@@ -23,7 +23,7 @@ description = "截取这台 PC 的当前屏幕"
 
 [[commands]]
 id = "pc.action"
-usage = "电脑操作 <关机|重启|睡眠|锁屏|注销>"
+usage = "电脑操作 <开机|关机|重启|睡眠|锁屏|注销>"
 description = "操作这台 PC"
 
 [[commands]]
@@ -83,6 +83,13 @@ type = "string"
 enum = ["shutdown", "restart", "sleep", "hibernate", "lock", "logoff"]
 
 [[tools]]
+name = "pc_power_on"
+description = "用 Wake-on-LAN 打开老公的电脑。"
+
+[tools.parameters]
+type = "object"
+
+[[tools]]
 name = "get_dsh_status"
 description = "查看 DSH 是否连通、当前大肥鱼模式状态和会话。"
 
@@ -100,6 +107,60 @@ key = "agentToken"
 label = "PC 管家 Token"
 type = "password"
 default = "pc-7f3a91c2"
+
+[[settings]]
+key = "pcHost"
+label = "PC 局域网地址"
+type = "string"
+default = "10.0.0.99"
+
+[[settings]]
+key = "haUrl"
+label = "Home Assistant 地址"
+type = "string"
+default = "https://10.0.0.123:8123"
+
+[[settings]]
+key = "haToken"
+label = "Home Assistant Token"
+type = "password"
+default = ""
+
+[[settings]]
+key = "haEntity"
+label = "电脑插座实体"
+type = "string"
+default = "switch.lemesh_cn_1117316460_sw0a04_on_p_2_1"
+
+[[settings]]
+key = "archPort"
+label = "Arch 端口"
+type = "number"
+default = 22222
+
+[[settings]]
+key = "archLaunchUrl"
+label = "Arch 切 Windows 地址"
+type = "string"
+default = "http://10.0.0.99:22222/launch?token=111111&app=reboot"
+
+[[settings]]
+key = "bootTimeoutMs"
+label = "开机等待超时（毫秒）"
+type = "number"
+default = 180000
+
+[[settings]]
+key = "macAddress"
+label = "电脑网卡 MAC（WOL）"
+type = "string"
+default = "50:6B:4B:1D:5B:A7"
+
+[[settings]]
+key = "broadcast"
+label = "WOL 广播地址"
+type = "string"
+default = "255.255.255.255"
 
 [[settings]]
 key = "acpHost"
