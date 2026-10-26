@@ -181,8 +181,11 @@ qixinpack keygen -out my                   # 生成密钥对（my.priv / my.pub�
 ```
 my-plugin/
 ├── manifest.toml      # 带一条示例命令和一个示例设置
-└── app/
-    └── index.js       # 最小 echo 实现，直接能跑
+├── app/
+│   └── index.js       # 最小 echo 实现，直接能跑
+├── web/
+│   └── panel.html     # 设置页附加面板（空骨架）
+└── README.md
 ```
 
 **改完直接 `qixinpack dev .` 就能看到效果**——不用先理解所有字段。
@@ -347,7 +350,7 @@ assets/
 ├── audio/             音频（标准）
 ├── video/             视频（标准）
 ├── fonts/             字体（标准，canvas 会自动注册）
-└── 自定义/            别的子目录要在 manifest 里声明（见 §6.12）
+└── 自定义/            别的子目录要在 manifest 里声明（见 §6.10）
 ```
 
 ### 解压后的运行区
@@ -441,7 +444,7 @@ pip install --target deps/python --only-binary=:all: <包名>
 | `concurrency` | string | 否 | `plugin`（默认，串行）/ `session`（同会话串行、跨会话并发） |
 | `load_order` | int | 否 | 启动顺序，小的先加载（服务插件用） |
 | `[cooldown]` | table | 否 | 冷却：`per_user` / `per_group` / `per_plugin` |
-| `[timeouts]` | table | 否 | 超时：`message` / `tool` / `event` 等 |
+| `[timeouts]` | table | 否 | 超时：`init` / `capability` / `message` / `call`（init 目前是占位，握手固定 10s） |
 
 > 完整的可解析字段以 `internal/plugin/manifest.go` 为准；上表是写插件最常用的一组。
 
@@ -466,6 +469,15 @@ aliases = ["weather"]
 name = "weather_query"
 description = "查询城市当前天气。用户问天气、气温、下不下雨时调用。"
 parameters = { type = "object", properties = { city = { type = "string" } }, required = ["city"] }
+
+[[settings]]
+key = "unit"
+label = "温度单位"
+type = "select"
+options = ["celsius", "fahrenheit"]
+option_labels = ["摄氏", "华氏"]
+default = "celsius"
+```
 
 ### 设置项类型（写错会退化成文本框）
 
@@ -501,14 +513,6 @@ default = "mention"
 
 不写 `option_labels` 就直接显示 `options`（英文）。**存的还是英文值**，
 所以代码里的判断不用改。
-
-[[settings]]
-key = "unit"
-label = "温度单位"
-type = "select"
-options = ["celsius", "fahrenheit"]
-default = "celsius"
-```
 
 ---
 
@@ -1048,7 +1052,7 @@ schema 里没声明的字段会被直接拒掉：
 
 | op | data 里有什么 | 说明 |
 |---|---|---|
-| `exec` | `{changes, last_id}` | 写操作，返回影响行数 |
+| `exec` | `{affected, last_id}` | 写操作，返回影响行数 |
 | `all` | `{rows, count}` | 查多行 |
 | `get` | `{row}` 或 `{row: null}` | 查一行，**没有要返回 null 而不是报错** |
 
@@ -1224,7 +1228,7 @@ JS SDK 的发消息方法是 **`host.sendMessage(chat, segments)`**（驼峰）�
 
 ### 交互等待的取消
 
-`host.ask` / `registerAsk` 的等待在以下情况**立刻结束**（插件侧会拿到空字符串）：
+`host.ask` 的等待在以下情况**立刻结束**（插件侧会拿到空字符串）：
 
 - 用户发了 取消 / cancel / 退出 / 算了 / 不弄了
 - 同一用户又发起了一次新的等待（旧等待被顶掉）
@@ -2067,7 +2071,7 @@ concurrency = "session"   # 不同群并行；不写 = 整个插件串行
 | 有共享状态 | 不写（默认串行） |
 | 长交互（`host.ask`） | `session` |
 
-**详细说明、实测数据、和冷却的关系见 §6.16b。**
+**详细说明、实测数据、和冷却的关系见 §6.20。**
 
 
 ## 6.10 素材目录：统一放 `assets/`
@@ -2266,7 +2270,9 @@ env = { MY_API = "xxx" }
 
 ## 6.11 用 Python 写插件
 
-**Python SDK 和 Node SDK 接口对齐**（`sdk/python/qixin.py`，16 个方法）：
+**Python SDK 和 Node SDK 接口对齐**（`sdk/python/qixin.py`，18 个方法）：
+注意框架只自动复制 **Node** SDK 到插件的 `_sdk/`——Python 插件要把
+`qixin.py` 放进自己的包里（`app/` 旁边即可）随包分发。
 
 | 能力 | Python | Node |
 |---|---|---|
@@ -2274,7 +2280,7 @@ env = { MY_API = "xxx" }
 | 交互等待 | `host.ask(chat, text, timeout_sec=60)` | `host.ask(chat, text, opts)` |
 | 后台任务 | `host.background(session, name, fn)` | 同名 |
 | 能力调用 | `host.capability(name, args)` | 同名 |
-| 私有存储 | `host.storage_get/storage_set` | `host.storage.get/set` |
+| 私有存储 | `host.storage_get/set/delete/list` | `host.storage.get/set/delete/list` |
 | 共享数据 | `host.shared_get/set/list` | `host.sharedGet/Set/List` |
 | 工具 | `host.list_tools(session)` | `host.listTools(session)` |
 | 权限 | `host.check_permission(plugin, session)` | `host.checkPermission(...)` |
@@ -2836,7 +2842,9 @@ args = { city = { type = "string", required = true, help = "城市名" } }
 async handle_message({ session }) {
   if (!session.command) return { handled: false }   // 不是我的命令
   const { city } = session.command.args
-  if (!session.command.missing.length === 0) { ... }
+  if (session.command.missing.length > 0) {
+    // 缺必填参数：提示用法，别拿 undefined 往下走
+  }
 }
 ```
 
@@ -3635,8 +3643,9 @@ version = "4.10.*"
 
 - 把 `.anzu` 丢进 `plugins/` → 自动解压到运行区 → **默认未启用**。
 - 管理员在 WebUI 点「启用」才真正启动进程。
-- 删除 `plugins/xxx.anzu` → 自动停止，运行区目录被改名到 `.removed-*`（数据保留）。
-- WebUI 的「删除」会同时删包和运行区目录。
+- 删除 `plugins/xxx.anzu` → 自动停止，运行区目录被改名到 `.removed-*`（数据保留在里面）。
+- WebUI 的「彻底删除」会同时删包和运行区目录：`data/` 先备份到
+  `data/removed-plugins/<id>-<时间>/data/`（重装不会自动恢复）再删运行区。
 
 ---
 

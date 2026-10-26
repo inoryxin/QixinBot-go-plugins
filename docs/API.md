@@ -135,7 +135,7 @@ value = "llm"
 | 项 | 规则 |
 |---|---|
 | 编码 | UTF-8，一行一个 JSON（NDJSON） |
-| 帧上限 | 8 MB |
+| 行上限 | 16 MiB；超长整行丢弃并记 warn（**不断连**） |
 | id | 宿主发起的带 `h-`，插件发起的带 `p-` |
 | 超时 | 心跳 3s / 工具 8s / 事件 10s / 消息 30s |
 | stdout | **只能走协议**，日志一律 stderr |
@@ -345,7 +345,12 @@ value = "llm"
 { "result": { "ok": true, "data": { ... } } }
 ```
 
+返回的 `result` 是提供者的原始返回：插件提供者就是它 `plugin.call_tool`
+的返回（`{ok, data, error}`），内置 `db.sqlite` 是 `{ok, data}`。
 找不到提供者返回 `-32002 unavailable`。
+
+**注意**：能力调用不做调用者权限校验（`uses` 只在加载时检查，见 §7）；
+提供者声明了参数 schema 时，未知参数会被拒绝。
 
 ### 3.5 `host.check_permission`
 
@@ -405,6 +410,25 @@ value = "llm"
 ```
 
 过滤依据是工具所属插件的权限（同 `host.check_permission`）。
+
+### 3.7b `host.call_tool`
+
+调别的插件声明的 `[[tools]]`（**工具，不是能力**）。带 `session` 时宿主按
+工具所属插件的权限过滤；不带 session 且对方插件配了访问限制就直接拒绝。
+
+```json
+{
+  "name": "weather_query",
+  "args": { "city": "北京" },
+  "session": { "account": "main", "chat_type": "group", "chat_id": 123456, "user_id": 2849446053, "call_token": "..." }
+}
+
+// 返回
+{ "result": { "ok": true, "data": { ... } } }
+```
+
+8 秒超时；`session.call_token`（`handle_message` 入参里带的）可换到可信会话；
+结果超过 32KB 会被截断。
 
 ### 3.8 `host.storage_*`
 
@@ -577,10 +601,12 @@ async handle_message({ session }) {
 
 **框架做什么**：
 
-| 调用 | 作用 |
-|---|---|
-| `host.job_begin` | 登记任务（控制台「工具」页可见） |
-| `host.job_end` | 标记完成/失败 |
+| 调用 | 参数 → 返回 | 作用 |
+|---|---|---|
+| `host.job_begin` | `{id, name, chat?}` → `{ok}` | 登记任务；id 由插件自己生成并保证唯一 |
+| `host.job_end` | `{id, error?}` → `{ok}` | 标记完成/失败；未知 id 静默忽略 |
+
+一般不用直接调：SDK 的 `host.background()` 已经把两次调用包好了。
 
 **控制台能看到**：
 
@@ -629,6 +655,8 @@ await host.reply(chat, `绑定成功：${name}`)
 ```
 
 **超时返回 `{"text": "", "answered": false}`**——不报错，插件按"没回答"处理。
+（走 SDK 时归一成字符串：Node `host.ask` / Python `host.ask` 超时都返回 `''`；
+直连协议才看到这个对象。）
 
 **宿主的处理**：
 
@@ -794,9 +822,13 @@ const r = await fetch('/api/tools/call', {
 | 检查点 | 内容 |
 |---|---|
 | 消息分发 | 用户/群能否触发这个插件（含前缀、@ 门禁） |
-| `host.send_message` | 插件能否发到这个群 |
-| `host.call_capability` | 目标工具所属插件的权限 |
+| `host.send_message` / `host.reply` | 插件能否发到这个群 |
+| `host.call_tool` / `host.list_tools` | 带 session 时按工具所属插件的权限过滤 |
 | `host.call_onebot` | action 是否在该插件允许级别内 |
+
+**`host.call_capability` 不做调用者权限校验**——能力是插件互信设计，
+`uses` 声明只在加载时用来标 degraded，调用时不强制。需要权限边界的
+场景（AI 可调、跨插件）用 `[[tools]]` + `host.call_tool`。
 
 所有拒绝都会写日志，带插件名和原因。
 
@@ -817,17 +849,20 @@ per_plugin = "0s"
 
 **冷却期静默跳过**（不回复"慢点"），追踪里显示 `✗ 冷却 — 还需 N 秒`。
 
+**不写 `[cooldown]` 就是完全不限制**——框架没有内置默认值，上面的数值只是示例，防刷屏要自己声明。
+
 ## 附：`[timeouts]` 配置
 
 ```toml
 [timeouts]
-init = "10s"          # 启动握手（默认 10 秒）
+init = "10s"          # 启动握手。注意：目前是占位，握手固定 10 秒，此值尚未生效
 capability = "15s"    # 能力调用（默认 15 秒）
 message = "30s"       # 单条消息（默认 30 秒）
 call = "30m"          # 单次宿主调用的兜底（默认 30 分钟）
 ```
 
-**`init` 只管启动握手**——不会截断 `host.ask` 的等待。
+**`init` 只管启动握手**——不会截断 `host.ask` 的等待；`call` 是所有
+插件 → 宿主调用的兜底（`host.ask` 长等待靠它兜住）。
 
 重依赖的服务插件可以放宽；轻插件保持默认。
 

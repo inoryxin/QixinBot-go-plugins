@@ -79,11 +79,12 @@ label = "API Key"
 type = "password"
 ```
 
-`exec` 的**第一个元素是相对 `app/` 的路径**（或系统命令名）。运行区布局是：
+`exec` 的**第一个元素相对运行区根解析**（或系统命令名；进程工作目录就是运行区根，
+所以 app 下的脚本要写全 `app/index.js`）。运行区布局是：
 
 ```
 data/plugins/weather/
-├── app/      ← exec 的工作目录在这里
+├── app/      ← exec 里 app/index.js 这种路径从这里算（工作目录是运行区根）
 ├── deps/     ← 自动加入模块搜索路径
 ├── data/     ← 插件私有数据，升级不动
 ├── web/      ← 设置页
