@@ -23,7 +23,7 @@ description = "截取这台 PC 的当前屏幕"
 
 [[commands]]
 id = "pc.action"
-usage = "电脑操作 <开机|关机|重启|睡眠|锁屏|注销>"
+usage = "电脑操作 <开机|通电|断电|关机|重启|睡眠|锁屏|注销>"
 description = "操作这台 PC"
 
 [[commands]]
@@ -84,7 +84,14 @@ enum = ["shutdown", "restart", "sleep", "hibernate", "lock", "logoff"]
 
 [[tools]]
 name = "pc_power_on"
-description = "用 Wake-on-LAN 打开老公的电脑。"
+description = "通过 Home Assistant 智能插座给老公的电脑通电。"
+
+[tools.parameters]
+type = "object"
+
+[[tools]]
+name = "pc_power_off"
+description = "通过 Home Assistant 智能插座给老公的电脑断电。"
 
 [tools.parameters]
 type = "object"
@@ -149,18 +156,6 @@ key = "bootTimeoutMs"
 label = "开机等待超时（毫秒）"
 type = "number"
 default = 180000
-
-[[settings]]
-key = "macAddress"
-label = "电脑网卡 MAC（WOL）"
-type = "string"
-default = "50:6B:4B:1D:5B:A7"
-
-[[settings]]
-key = "broadcast"
-label = "WOL 广播地址"
-type = "string"
-default = "255.255.255.255"
 
 [[settings]]
 key = "acpHost"

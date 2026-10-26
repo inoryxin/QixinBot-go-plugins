@@ -47,7 +47,6 @@ GET  /dsh-url         DSH 带 token 的地址
 POST /ensure-dsh?web=1   启动 ACP 桥（3099）和 DSH web（3080）
 POST /open?url=...       打开浏览器
 POST /action?action=shutdown|restart|sleep|hibernate|lock|logoff
-（`电脑操作 开机` 的 WOL 由插件直接从框架侧发，不经过 agent）
 POST /shell              token 保护的 PowerShell（插件默认不调用）
 POST /upload?name=...    上传图片到 PC
 GET  /file?path=...      读取 PC 文件
@@ -58,7 +57,7 @@ GET  /file?path=...      读取 PC 文件
 ```text
 电脑                     状态
 截图                     截屏
-电脑操作 关机/重启/睡眠/休眠/锁屏/注销
+电脑操作 开机/通电/断电/关机/重启/睡眠/休眠/锁屏/注销
 进入大肥鱼模式           唤醒 DSH，连接 ACP，接管私聊
 退出大肥鱼模式 [并关机]
 新会话 / 会话列表 / 切换 n / 切换大肥鱼
@@ -66,7 +65,7 @@ GET  /file?path=...      读取 PC 文件
 
 工具：`get_pc_status`、`pc_screenshot`、`pc_action`、`pc_power_on`、`get_dsh_status`。
 
-`电脑操作 开机` 用 Wake-on-LAN 发魔术包（默认 MAC `50:6B:4B:1D:5B:A7`）；需要主板/网卡开启 WOL。
+`电脑操作 开机`/`通电` 通过 Home Assistant 插座 `switch.turn_on`；`断电` 用 `switch.turn_off`。光网卡没有 WOL，不需要也不使用 WOL。
 
 ## 和旧插件的区别
 

@@ -1,6 +1,5 @@
 import { serve, host } from '../_sdk/qixin.mjs'
 import { AcpTcpClient } from './acp.mjs'
-import dgram from 'node:dgram'
 import http from 'node:http'
 import https from 'node:https'
 import net from 'node:net'
@@ -130,23 +129,13 @@ async function agent(pathName, init = {}) {
   return type.includes('application/json') ? r.json() : Buffer.from(await r.arrayBuffer())
 }
 
-async function wakeOnLan() {
-  const mac = String(settings.macAddress || '50:6B:4B:1D:5B:A7').replace(/[^0-9a-f]/gi, '')
-  if (mac.length !== 12) throw new Error('MAC 地址格式不对')
-  const target = Buffer.alloc(6, 0xff)
-  const addr = Buffer.from(mac, 'hex')
-  const packet = Buffer.concat([target, ...Array(16).fill(addr)])
-  const socket = dgram.createSocket('udp4')
-  await new Promise((resolve, reject) => {
-    socket.once('error', reject)
-    socket.bind(() => {
-      try { socket.setBroadcast(true) } catch {}
-      socket.send(packet, 9, String(settings.broadcast || '255.255.255.255'), (err) => {
-        socket.close()
-        err ? reject(err) : resolve()
-      })
-    })
-  })
+async function haPower(on) {
+  const entity = String(settings.haEntity || 'switch.lemesh_cn_1117316460_sw0a04_on_p_2_1')
+  const state = await haRequest('GET', `/api/states/${encodeURIComponent(entity)}`)
+  const currentlyOn = state.state === 'on'
+  if (currentlyOn === on) return { changed: false, state: state.state }
+  await haRequest('POST', `/api/services/switch/${on ? 'turn_on' : 'turn_off'}`, { entity_id: entity })
+  return { changed: true, state: on ? 'on' : 'off' }
 }
 
 function gb(bytes) { return `${(Number(bytes) / 1024 ** 3).toFixed(1)} GB` }
@@ -370,11 +359,16 @@ serve({
         await sendScreenshot(session)
         return { handled: true }
       }
-      const act = /^电脑操作\s*(开机|关机|重启|睡眠|休眠|锁屏|注销)$/.exec(text)
+      const act = /^电脑操作\s*(开机|通电|断电|关机|重启|睡眠|休眠|锁屏|注销)$/.exec(text)
       if (act) {
-        if (act[1] === '开机') {
-          await wakeOnLan()
-          await host.reply(chatOf(session), '已发送网络唤醒（需要主板/NIC 开 WOL）。')
+        if (act[1] === '开机' || act[1] === '通电') {
+          const r = await haPower(true)
+          await host.reply(chatOf(session), r.changed ? '插座已通电，电脑开始启动…' : '插座本来就是通电的。')
+          return { handled: true }
+        }
+        if (act[1] === '断电') {
+          const r = await haPower(false)
+          await host.reply(chatOf(session), r.changed ? '插座已断电。' : '插座本来就是断电的。')
           return { handled: true }
         }
         const map = { 关机: 'shutdown', 重启: 'restart', 睡眠: 'sleep', 休眠: 'hibernate', 锁屏: 'lock', 注销: 'logoff' }
@@ -433,8 +427,12 @@ serve({
         return { ok: true, data: { image: buf.toString('base64') } }
       }
       if (name === 'pc_power_on') {
-        await wakeOnLan()
-        return { ok: true, data: { text: '已发送网络唤醒' } }
+        const r = await haPower(true)
+        return { ok: true, data: { text: r.changed ? '插座已通电' : '插座本来就是通电的' } }
+      }
+      if (name === 'pc_power_off') {
+        const r = await haPower(false)
+        return { ok: true, data: { text: r.changed ? '插座已断电' : '插座本来就是断电的' } }
       }
       if (name === 'pc_action') {
         await agent(`/action?action=${encodeURIComponent(args?.action || '')}`, { method: 'POST', timeout: 10000 })
