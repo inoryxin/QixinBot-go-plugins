@@ -245,12 +245,21 @@ async function enter(session) {
   } finally { busy = false }
 }
 
-async function exit(session) {
+async function exit(session, shutdown) {
   mode = 'idle'
   try { acp?.close() } catch {}
   acp = null
   sessionId = ''
   await saveState({ active: false, sessionId: '' })
+  if (shutdown) {
+    try {
+      await agent('/action?action=shutdown', { method: 'POST', timeout: 10000 })
+      await host.reply(chatOf(session), '已退出大肥鱼模式，已发送 Windows 关机指令。')
+    } catch (e) {
+      await host.reply(chatOf(session), `已退出大肥鱼模式，但关机失败：${e.message}`)
+    }
+    return
+  }
   await host.reply(chatOf(session), '已退出大肥鱼模式，聊天交回给我。')
 }
 
@@ -356,8 +365,8 @@ serve({
         await enter(session)
         return { handled: true }
       }
-      if (/^退出大肥鱼模式$/.test(text)) {
-        await exit(session)
+      if (/^退出大肥鱼模式(并关机)?$/.test(text)) {
+        await exit(session, /并关机$/.test(text))
         return { handled: true }
       }
       if (/^新会话$/.test(text)) {

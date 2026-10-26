@@ -33,8 +33,8 @@ description = "唤醒 DSH（web + ACP 桥），把私聊交给 DSH"
 
 [[commands]]
 id = "pc.dsh.exit"
-usage = "退出大肥鱼模式"
-description = "退出 DSH 接管，聊天交回 OneBot"
+usage = "退出大肥鱼模式 [并关机]"
+description = "退出 DSH 接管，聊天交回 OneBot；可选正常关机"
 
 [[commands]]
 id = "pc.dsh.new"
