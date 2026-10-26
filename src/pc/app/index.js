@@ -162,6 +162,16 @@ async function dshServices(withWeb) {
   return agent(`/ensure-dsh?web=${withWeb ? '1' : '0'}`, { method: 'POST', timeout: withWeb ? 60000 : 20000 })
 }
 
+async function dshReady(withWeb) {
+  try {
+    const st = await agent('/status', { timeout: 12000 })
+    if (st?.dsh?.web && st?.dsh?.bridge) {
+      return { bridge: { ready: true }, web: { ready: true, url: (await agent('/dsh-url', { timeout: 5000 })).url || '' } }
+    }
+  } catch {}
+  return dshServices(withWeb)
+}
+
 async function readState() {
   return (await host.storage.get('dsh')) || {}
 }
@@ -354,7 +364,7 @@ async function enter(session) {
     await host.reply(chatOf(session), '大肥鱼模式启动中，先检查你电脑开没开…')
     await ensureWindows(session)
     await host.reply(chatOf(session), '正在连接 DSH…')
-    const svc = await dshServices(true)
+    const svc = await dshReady(true)
     if (!svc.bridge?.ready) throw new Error('ACP 桥没起来')
     const state = await readState()
     let id = ''
@@ -366,9 +376,10 @@ async function enter(session) {
     const defaultId = usedDefault ? state.defaultSessionId : id
     await saveState({ active: true, sessionId: id, defaultSessionId: defaultId })
     await setSessionTitle(defaultId, '大肥鱼')
+    await host.sharedSet('pc.dsh_active', true)
     mode = 'dsh'
     await openDshWeb(svc.web?.url)
-    const title = await titleOf(id)
+    const title = (await loadLocalTitles())[normalizeId(id)]?.title || '大肥鱼'
     await host.reply(chatOf(session), `大肥鱼模式已接管，当前会话：${title}（${String(id).slice(0, 8)}）。\n发「新会话」「会话列表」「切换 n」；发「退出大肥鱼模式」还给我。`)
   } catch (e) {
     mode = 'idle'
@@ -380,6 +391,7 @@ async function enter(session) {
 
 async function exit(session, shutdown) {
   mode = 'idle'
+  await host.sharedSet('pc.dsh_active', false)
   try { acp?.close() } catch {}
   acp = null
   sessionId = ''
@@ -509,9 +521,11 @@ serve({
           await dshServices(false)
           await connectAcp(state.sessionId || '')
           mode = 'dsh'
+          await host.sharedSet('pc.dsh_active', true)
           host.log('info', `DSH 已重连 ${sessionId}`)
         } catch (e) {
           mode = 'idle'
+          await host.sharedSet('pc.dsh_active', false)
           host.log('warn', `DSH 重连失败: ${e.message}`)
         }
       }, 3000)

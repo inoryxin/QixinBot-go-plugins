@@ -1498,6 +1498,13 @@ serve({
   },
 
   async handle_message({ session }) {
+    // 大肥鱼模式接管私聊时，AI 聊天不许插嘴；群聊仍然正常。
+    if (session.chat_type === 'private') {
+      try {
+        const dsh = await host.sharedGet('pc.dsh_active')
+        if (dsh === true || dsh === 'true') return { handled: false }
+      } catch {}
+    }
     const text = (session.text || '').trim()
     const segTypes = (session.segments || []).map((x) => x.type).join(',')
     const imgCount = imageURLsOf(session).length

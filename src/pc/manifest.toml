@@ -7,6 +7,11 @@ description = "一台 PC 一个管家：状态、截图、重启/睡眠/锁屏�
 priority = 10
 permissions = ["onebot.dangerous"]
 
+[[shared]]
+key = "dsh_active"
+description = "大肥鱼模式是否接管私聊"
+default = false
+
 [timeouts]
 message = "15m"
 call = "30m"
