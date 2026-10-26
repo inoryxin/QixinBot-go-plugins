@@ -1583,6 +1583,10 @@ serve({
           if (dsh === true || dsh === 'true') return {}
         } catch {}
       }
+      // 电脑/大肥鱼控制命令不写进记忆，避免"进入大肥鱼模式"这种操作句污染聊天记录。
+      if (/^(进入大肥鱼模式|退出大肥鱼模式(并关机)?|切换大肥鱼|回到大肥鱼|新会话|会话列表|切换\s*\d+|电脑|截图|电脑截图|电脑操作\s)/.test(String(session.text || '').trim())) {
+        return {}
+      }
       await ensureReady()
       if (session.has_prefix) return {}
       const text = (session.text || '').trim()
