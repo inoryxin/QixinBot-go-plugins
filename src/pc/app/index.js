@@ -76,7 +76,7 @@ function haRequest(method, pathName, body) {
 }
 
 async function ensureWindows(session) {
-  const host = settings.pcHost || '10.0.0.99'
+  const pcHost = settings.pcHost || '10.0.0.99'
   try {
     await agent('/status', { timeout: 5000 })
     return true
@@ -84,7 +84,7 @@ async function ensureWindows(session) {
 
   // Windows 已经开着但管家刚被关掉（比如关闭 DSH 时误杀 node）：
   // 不要误判成电脑关机去走 HA/Arch，等管家自愈即可。
-  if ((await probePort(host, 3389)) || (await probePort(host, 445))) {
+  if ((await probePort(pcHost, 3389)) || (await probePort(pcHost, 445))) {
     await host.reply(chatOf(session), 'Windows 已开机，等 PC 管家启动…')
     const deadline = Date.now() + (Number(settings.agentWaitMs) || 60000)
     while (Date.now() < deadline) {
@@ -95,7 +95,7 @@ async function ensureWindows(session) {
   }
 
   const archPort = Number(settings.archPort) || 22222
-  if (!(await probePort(host, archPort))) {
+  if (!(await probePort(pcHost, archPort))) {
     const entity = String(settings.haEntity || 'switch.lemesh_cn_1117316460_sw0a04_on_p_2_1')
     const state = await haRequest('GET', `/api/states/${encodeURIComponent(entity)}`)
     if (state.state !== 'on') {
@@ -105,10 +105,10 @@ async function ensureWindows(session) {
       await host.reply(chatOf(session), '插座是通电的，电脑可能在启动…')
     }
     await host.reply(chatOf(session), '等 Arch 起来（大约一分钟）…')
-    await waitPort(host, archPort, Number(settings.bootTimeoutMs) || 180000, 'Arch 启动')
+    await waitPort(pcHost, archPort, Number(settings.bootTimeoutMs) || 180000, 'Arch 启动')
   }
   await host.reply(chatOf(session), 'Arch 已在线，发重启指令切到 Windows…')
-  await fetch(String(settings.archLaunchUrl || `http://${host}:22222/launch?token=111111&app=reboot`), { signal: AbortSignal.timeout(10000) })
+  await fetch(String(settings.archLaunchUrl || `http://${pcHost}:22222/launch?token=111111&app=reboot`), { signal: AbortSignal.timeout(10000) })
   await host.reply(chatOf(session), '等 Windows 重启（大约一分钟）…')
   const deadline = Date.now() + (Number(settings.bootTimeoutMs) || 180000)
   while (Date.now() < deadline) {
