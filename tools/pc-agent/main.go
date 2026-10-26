@@ -86,7 +86,7 @@ func startDetached(name string, args []string, dir, logName string, extraEnv ...
     cmd.Stdout = f
     cmd.Stderr = f
     if len(extraEnv) > 0 { cmd.Env = append(os.Environ(), extraEnv...) }
-    cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: 0x00000010 | 0x00000200}
+    cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: false, CreationFlags: 0x00000010 | 0x00000200}
     if err := cmd.Start(); err != nil { _ = f.Close(); logf("%s start error: %v", logName, err); return 0, err }
     pid := cmd.Process.Pid
     _ = cmd.Process.Release()
@@ -170,6 +170,13 @@ $g.Dispose();$bmp.Dispose()`, strings.ReplaceAll(file, "'", "''"))
     return file, err
 }
 
+func killStaleAcp() {
+    cmd := `Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match '--profile acp' -and $_.Name -eq 'node.exe' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }`
+    c := exec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", cmd)
+    c.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+    _ = c.Run()
+}
+
 func ensureDSH(withWeb bool) map[string]any {
     res := map[string]any{"bridge": map[string]any{"ready": false, "started": false}, "web": map[string]any{"ready": false, "started": false, "url": ""}}
     b := res["bridge"].(map[string]any)
@@ -196,11 +203,27 @@ func ensureDSH(withWeb bool) map[string]any {
         }
     }
 
-    // ACP 桥由登录启动项 dsh-acp-bridge.vbs 负责；这里只检查，不重复拉起。
-    // Go 进程拉起桥时，DSH 的 ACP 子进程会因会话/终端环境不同而退出，反而把好桥弄坏。
-    b["ready"] = portOpen(3099, 500*time.Millisecond)
-    if !b["ready"].(bool) {
-        b["error"] = "ACP 桥未启动（登录启动项 dsh-acp-bridge.vbs 未运行）"
+    // ACP 桥必须带 DSH_PROFILE/DSH_PROFILE_DIR 环境启动，否则 ACP 子进程会退出。
+    // 由 .dsh\dsh-acp-bridge.cmd 统一启动，登录启动项也调用同一个 cmd。
+    if !portOpen(3099, 500*time.Millisecond) {
+        killStaleAcp()
+        launcher := filepath.Join(dshHome, "dsh-acp-bridge.cmd")
+        bridge := filepath.Join(dshHome, "acp-bridge.js")
+        if _, err := os.Stat(launcher); err == nil {
+            if _, err := startDetached("cmd.exe", []string{"/c", launcher}, dshHome, "acp-bridge"); err == nil {
+                b["started"] = true
+            } else {
+                b["error"] = err.Error()
+            }
+        } else if _, err := os.Stat(bridge); err == nil {
+            if _, err := startDetached(nodePath(), []string{bridge}, dshHome, "acp-bridge", "DSH_ACP_TOKEN=111111", "DSH_ACP_PORT=3099", "DSH_META_PORT=3098", "DSH_HOME="+dshHome, "DSH_PROFILE=web", "DSH_PROFILE_DIR="+filepath.Join(dshHome, "profiles", "web")); err == nil {
+                b["started"] = true
+            } else {
+                b["error"] = err.Error()
+            }
+        } else {
+            b["error"] = "缺少 " + bridge
+        }
     }
     b["ready"] = waitPort(3099, 20*time.Second)
     return res

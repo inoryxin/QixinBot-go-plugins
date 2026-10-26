@@ -297,7 +297,7 @@ async function switchToDefault(session) {
     await ensureAcp()
     let id
     try { id = await acp.resumeSession(target, settings.workspace) }
-    catch (e) { if (!/already active/i.test(e.message)) throw e; id = target }
+    catch (e) { if (!/already active|internal error/i.test(e.message)) throw e; id = target }
     sessionId = id
     await saveState({ active: true, sessionId: id })
     await setSessionTitle(id, '大肥鱼')
@@ -320,7 +320,7 @@ async function connectAcp(resume) {
       if (resume) {
         try { id = await client.resumeSession(resume, settings.workspace) }
         catch (e) {
-          if (!/already active/i.test(e.message)) throw e
+          if (!/already active|internal error/i.test(e.message)) throw e
           id = resume
         }
       } else {
@@ -366,8 +366,10 @@ async function enter(session) {
   try {
     await host.reply(chatOf(session), '大肥鱼模式启动中，先检查你电脑开没开…')
     await ensureWindows(session)
+    host.log('info', 'pc enter: windows ready')
     await host.reply(chatOf(session), '正在连接 DSH…')
     const svc = await dshReady(true)
+    host.log('info', `pc enter: dshReady bridge=${svc.bridge?.ready} web=${svc.web?.ready}`)
     if (!svc.bridge?.ready) throw new Error('ACP 桥没起来')
     const state = await readState()
     let id = ''
@@ -383,6 +385,7 @@ async function enter(session) {
       id = await connectAcp('')
       defaultId = id
     }
+    host.log('info', `pc enter: acp id=${String(id).slice(0,8)} default=${String(defaultId).slice(0,8)}`)
     await saveState({ active: true, sessionId: id, defaultSessionId: defaultId })
     await setSessionTitle(defaultId, '大肥鱼')
     await host.sharedSet('pc.dsh_active', true)
@@ -513,7 +516,7 @@ async function switchSession(session, index) {
     if (!target) return host.reply(chatOf(session), `没有第 ${index} 个会话。`)
     let id
     try { id = await acp.resumeSession(target.raw, settings.workspace) }
-    catch (e) { if (!/already active/i.test(e.message)) throw e; id = target.raw }
+    catch (e) { if (!/already active|internal error/i.test(e.message)) throw e; id = target.raw }
     sessionId = id
     await saveState({ active: true, sessionId: id })
     await host.reply(chatOf(session), `已切换到「${target.title}」`)
