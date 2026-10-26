@@ -239,6 +239,20 @@ Python 插件加载时如果环境不满足，状态会是 `missing_runtime`，�
 改密码：进「连接」页下方的「登录密码」表单，改完立即生效（会写回 config.toml）。
 忘了密码就看远端 `C:\qqbot\config.toml` 的 `[web] password`。
 
+### 断电/重启自启
+
+58 这台机器现在的自启链：
+
+1. Windows 开机 → 自动登录 `server`（`AutoAdminLogon=1`，密码存在 Winlogon 注册表）
+2. `QixinBot` 计划任务（开机启动）拉起 `C:\qqbot\bin\qixinbot.exe`
+3. 用户启动目录 `Startup\qixin-autostart.cmd`：启动 QQ → 等 45 秒 → 启动 SnowLuma
+4. SnowLuma 登录 QQ 后监听 `3001`，QixinBot 自动重连
+
+旧的 `onebot-bot` 计划任务已禁用，避免抢 `7801`。
+
+**QQ 必须勾选「自动登录」**。Windows 自动登录只负责进入桌面，不会替 QQ 登录账号；
+没勾选的话，断电后 QQ 会停在登录窗口，SnowLuma 就不会监听 3001。
+
 ## 更新插件的流程
 
 1. 本地改 `plugins/<name>/`
