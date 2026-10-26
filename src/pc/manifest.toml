@@ -160,6 +160,19 @@ type = "number"
 default = 3099
 
 [[settings]]
+key = "metaPort"
+label = "DSH 元数据端口"
+type = "number"
+default = 3098
+
+[[settings]]
+key = "relayPersona"
+label = "DSH 接管时的额外提示"
+type = "textarea"
+default = ""
+hint = "留空即可；固定人设由 DSH 侧提供"
+
+[[settings]]
 key = "acpToken"
 label = "ACP Token"
 type = "password"

@@ -3,6 +3,7 @@ import { AcpTcpClient } from './acp.mjs'
 import http from 'node:http'
 import https from 'node:https'
 import net from 'node:net'
+import path from 'node:path'
 
 let settings = {}
 let mode = 'idle' // idle | starting | dsh
@@ -169,6 +170,129 @@ async function saveState(patch) {
   await host.storage.set('dsh', { ...prev, ...patch, updatedAt: Date.now() })
 }
 
+function normalizeId(v) { return String(v ?? '').replace(/^session-/, '') }
+function shortTitle(title, fallback) {
+  const text = String(title ?? '').trim() || fallback
+  const chars = Array.from(text)
+  return chars.length <= 14 ? text : `${chars.slice(0, 13).join('')}…`
+}
+function workspaceName() {
+  return String(settings.workspace || '').replace(/\\/g, '/').split('/').filter(Boolean).pop() || 'xin'
+}
+
+async function loadLocalTitles() {
+  return (await host.storage.get('sessionTitles')) || {}
+}
+async function saveLocalTitles(all) { await host.storage.set('sessionTitles', all) }
+async function touchTitle(id, text) {
+  const key = normalizeId(id)
+  if (!key) return
+  const all = await loadLocalTitles()
+  const now = Date.now()
+  const prev = all[key] || { createdAt: now }
+  all[key] = { ...prev, title: prev.title || (text ? shortTitle(text, '') : ''), lastUsedAt: now }
+  await saveLocalTitles(all)
+}
+async function setSessionTitle(id, title) {
+  const key = normalizeId(id)
+  if (!key || !title) return
+  const all = await loadLocalTitles()
+  all[key] = { ...(all[key] || { createdAt: Date.now() }), title, lastUsedAt: Date.now() }
+  await saveLocalTitles(all)
+}
+
+async function sessionTitles(cwd) {
+  const port = Number(settings.metaPort) || 3098
+  try {
+    const r = await fetch(`http://${settings.acpHost}:${port}/sessions?cwd=${encodeURIComponent(cwd)}`, { signal: AbortSignal.timeout(3000) })
+    if (!r.ok) return new Map()
+    const data = await r.json()
+    const map = new Map()
+    for (const item of data.sessions || []) {
+      map.set(normalizeId(item.sessionId), {
+        title: String(item.title || ''),
+        lastPromptAt: Number(item.lastPromptAt || 0),
+        workspace: String(item.workspace || ''),
+      })
+    }
+    return map
+  } catch { return new Map() }
+}
+
+async function archivedIds() {
+  const port = Number(settings.metaPort) || 3098
+  try {
+    const r = await fetch(`http://${settings.acpHost}:${port}/archived`, { signal: AbortSignal.timeout(3000) })
+    if (!r.ok) return new Set()
+    const data = await r.json()
+    return new Set((data.ids || []).map(normalizeId))
+  } catch { return new Set() }
+}
+
+async function allSessions() {
+  const [result, dshTitles, archived] = await Promise.all([
+    acp.listSessions(settings.workspace),
+    sessionTitles(settings.workspace),
+    archivedIds(),
+  ])
+  const current = normalizeId(sessionId)
+  const state = await readState()
+  const defaultId = normalizeId(state.defaultSessionId)
+  const local = await loadLocalTitles()
+  const wanted = workspaceName()
+  const sessions = (result?.sessions || [])
+    .filter((item) => {
+      const id = normalizeId(item.sessionId)
+      return !archived.has(id) || id === current || id === defaultId
+    })
+    .map((item) => {
+      const id = normalizeId(item.sessionId)
+      const dsh = dshTitles.get(id) || {}
+      return {
+        id,
+        raw: item.sessionId,
+        title: local[id]?.title || dsh.title || '',
+        workspace: dsh.workspace || '',
+        usedAt: local[id]?.lastUsedAt ?? dsh.lastPromptAt ?? 0,
+      }
+    })
+    .filter((item) => !item.workspace || item.workspace === wanted || item.workspace === settings.workspace)
+
+  const seen = new Set(sessions.map((x) => x.id))
+  for (const [id, meta] of Object.entries(local)) {
+    if (seen.has(id) || !meta.title) continue
+    if (archived.has(id) && id !== current && id !== defaultId) continue
+    sessions.push({ id, raw: id, title: meta.title, usedAt: meta.lastUsedAt || 0 })
+  }
+
+  const titled = sessions.filter((x) => x.title).sort((a, b) => b.usedAt - a.usedAt)
+  const untitled = sessions.filter((x) => !x.title)
+  const visible = titled.length ? titled : untitled
+  if (current && !visible.some((x) => x.id === current)) visible.unshift({ id: current, raw: sessionId, title: '新会话', usedAt: Date.now() })
+  return visible
+}
+
+async function titleOf(id) {
+  const list = await allSessions()
+  return list.find((x) => x.id === normalizeId(id))?.title || '新会话'
+}
+
+async function switchToDefault(session) {
+  const state = await readState()
+  const target = normalizeId(state.defaultSessionId)
+  if (!target) return host.reply(chatOf(session), '还没有默认会话，先进一次大肥鱼模式。')
+  try {
+    await ensureAcp()
+    let id
+    try { id = await acp.resumeSession(target, settings.workspace) }
+    catch (e) { if (!/already active/i.test(e.message)) throw e; id = target }
+    sessionId = id
+    await saveState({ active: true, sessionId: id })
+    await setSessionTitle(id, '大肥鱼')
+    await host.reply(chatOf(session), '已切回「大肥鱼」')
+  } catch (e) { await host.reply(chatOf(session), `切换失败：${e.message}`) }
+}
+
 async function connectAcp(resume) {
   const deadline = Date.now() + 30000
   let last
@@ -233,13 +357,19 @@ async function enter(session) {
     const svc = await dshServices(true)
     if (!svc.bridge?.ready) throw new Error('ACP 桥没起来')
     const state = await readState()
-    let id
-    try { id = await connectAcp(state.sessionId || '') }
-    catch { id = await connectAcp('') }
-    await saveState({ active: true, sessionId: id, defaultSessionId: state.defaultSessionId || id })
+    let id = ''
+    let usedDefault = false
+    if (state.defaultSessionId) {
+      try { id = await connectAcp(state.defaultSessionId); usedDefault = true } catch {}
+    }
+    if (!id) id = await connectAcp('')
+    const defaultId = usedDefault ? state.defaultSessionId : id
+    await saveState({ active: true, sessionId: id, defaultSessionId: defaultId })
+    await setSessionTitle(defaultId, '大肥鱼')
     mode = 'dsh'
     await openDshWeb(svc.web?.url)
-    await host.reply(chatOf(session), `大肥鱼模式已接管，DSH 会话 ${String(id).slice(0, 8)}。\n发「新会话」「会话列表」「切换 n」；发「退出大肥鱼模式」还给我。`)
+    const title = await titleOf(id)
+    await host.reply(chatOf(session), `大肥鱼模式已接管，当前会话：${title}（${String(id).slice(0, 8)}）。\n发「新会话」「会话列表」「切换 n」；发「退出大肥鱼模式」还给我。`)
   } catch (e) {
     mode = 'idle'
     try { acp?.close() } catch {}
@@ -266,6 +396,56 @@ async function exit(session, shutdown) {
   await host.reply(chatOf(session), '已退出大肥鱼模式，聊天交回给我。')
 }
 
+async function uploadIncoming(session) {
+  const paths = []
+  const images = (session.segments || []).filter((x) => x?.type === 'image').slice(0, 3)
+  for (let i = 0; i < images.length; i++) {
+    const data = images[i].data || {}
+    try {
+      let buf
+      if (data.url || /^https?:/i.test(data.file || '')) {
+        const r = await fetch(data.url || data.file, { signal: AbortSignal.timeout(20000) })
+        if (!r.ok) continue
+        buf = Buffer.from(await r.arrayBuffer())
+      } else if ((data.file || '').startsWith('base64://')) {
+        buf = Buffer.from(data.file.slice(9), 'base64')
+      } else continue
+      if (!buf?.length) continue
+      const up = await agent(`/upload?name=${encodeURIComponent(`qq-${Date.now()}-${i}.png`)}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: buf, timeout: 30000,
+      })
+      if (up.path) paths.push(up.path)
+    } catch (e) { host.log('warn', `上传 QQ 图片失败: ${e.message}`) }
+  }
+  return paths
+}
+
+function relayPrompt(text, imagePaths) {
+  const persona = String(settings.relayPersona || '').trim()
+  const lines = [
+    '你正在通过 QQ 和老公私聊，消息会直接显示在 QQ 里。',
+    '只回一条简短的消息（一两句），不要列表、标题、长段落，不要重复解释，不要发一堆消息。',
+  ]
+  if (persona) lines.push(persona)
+  if (imagePaths.length) lines.push(`用户发来图片，PC 本地路径：${imagePaths.join('；')}`)
+  lines.push(`用户消息：${text}`)
+  return lines.join('\n')
+}
+
+async function sendLocalImages(session, text) {
+  const paths = [...String(text || '').matchAll(/[A-Za-z]:\\[^\n\r"'`<>|]+?\.(?:png|jpe?g|gif|webp)/gi)]
+    .map((m) => m[0])
+    .filter((v, i, a) => a.indexOf(v) === i)
+  for (const file of paths.slice(0, 3)) {
+    try {
+      const buf = await agent(`/file?path=${encodeURIComponent(file)}`, { timeout: 30000 })
+      if (!buf?.length || buf.length > 8 * 1024 * 1024) continue
+      await host.reply(chatOf(session), [{ type: 'image', data: { file: `base64://${buf.toString('base64')}` } }])
+      host.log('info', `发送 DSH 图片 ${file}`)
+    } catch (e) { host.log('warn', `发送图片 ${file} 失败: ${e.message}`) }
+  }
+}
+
 async function relay(session, text) {
   if (!acp?.connected) {
     try { await ensureAcp() } catch (e) { return host.reply(chatOf(session), `DSH 没连上：${e.message}`) }
@@ -278,8 +458,11 @@ async function relay(session, text) {
     if (sec > 30) host.reply(chatOf(session), `还在跑…已经 ${sec} 秒`).catch(() => {})
   }, 120000)
   try {
-    const r = await acp.prompt(sessionId, text, Number(settings.promptTimeoutMs) || 7200000)
+    const imagePaths = await uploadIncoming(session)
+    await touchTitle(sessionId, text)
+    const r = await acp.prompt(sessionId, relayPrompt(text, imagePaths), Number(settings.promptTimeoutMs) || 7200000)
     await host.reply(chatOf(session), r.text || `（DSH 没有说话，stopReason=${r.stopReason}）`)
+    await sendLocalImages(session, r.text)
   } catch (e) {
     if (/超时/.test(e.message)) {
       acp.request('session/cancel', { sessionId }).catch(() => {})
@@ -293,26 +476,25 @@ async function relay(session, text) {
 async function listSessions(session) {
   try {
     await ensureAcp()
-    const r = await acp.listSessions(settings.workspace)
-    const list = (r?.sessions || []).slice(0, 12)
+    const list = (await allSessions()).slice(0, 12)
     if (!list.length) return host.reply(chatOf(session), '还没有历史会话。')
-    const lines = list.map((x, i) => `${i + 1}. ${x.sessionId.slice(0, 8)}${x.sessionId === sessionId ? ' ←当前' : ''}`)
-    await host.reply(chatOf(session), ['会话列表（发「切换 n」）：', ...lines].join('\n'))
+    const lines = list.map((x, i) => `${i + 1}. ${x.title}（${x.id.slice(0, 8)}）${x.id === normalizeId(sessionId) ? ' ←当前' : ''}`)
+    await host.reply(chatOf(session), ['会话列表（只列 xin；发「切换 n」）：', ...lines].join('\n'))
   } catch (e) { await host.reply(chatOf(session), `读取会话失败：${e.message}`) }
 }
 
 async function switchSession(session, index) {
   try {
     await ensureAcp()
-    const r = await acp.listSessions(settings.workspace)
-    const target = (r?.sessions || [])[index - 1]
+    const list = await allSessions()
+    const target = list[index - 1]
     if (!target) return host.reply(chatOf(session), `没有第 ${index} 个会话。`)
     let id
-    try { id = await acp.resumeSession(target.sessionId, settings.workspace) }
-    catch (e) { if (!/already active/i.test(e.message)) throw e; id = target.sessionId }
+    try { id = await acp.resumeSession(target.raw, settings.workspace) }
+    catch (e) { if (!/already active/i.test(e.message)) throw e; id = target.raw }
     sessionId = id
     await saveState({ active: true, sessionId: id })
-    await host.reply(chatOf(session), `已切换到 ${id.slice(0, 8)}`)
+    await host.reply(chatOf(session), `已切换到「${target.title}」`)
   } catch (e) { await host.reply(chatOf(session), `切换失败：${e.message}`) }
 }
 
@@ -377,6 +559,7 @@ serve({
           await ensureAcp()
           sessionId = await acp.newSession(settings.workspace)
           await saveState({ active: true, sessionId })
+          await touchTitle(sessionId, '新会话')
           await host.reply(chatOf(session), '新会话开好了，直接说话就行。')
         } catch (e) { await host.reply(chatOf(session), `创建会话失败：${e.message}`) }
         return { handled: true }
@@ -385,14 +568,7 @@ serve({
       const sw = /^切换\s*(\d+)$/.exec(text)
       if (sw) { await switchSession(session, Number(sw[1])); return { handled: true } }
       if (/^(切换大肥鱼|回到大肥鱼)$/.test(text)) {
-        const st = await readState()
-        if (!st.defaultSessionId) { await host.reply(chatOf(session), '还没有默认会话，先进一次大肥鱼模式。'); return { handled: true } }
-        try {
-          await ensureAcp()
-          sessionId = await acp.resumeSession(st.defaultSessionId, settings.workspace)
-          await saveState({ active: true, sessionId })
-          await host.reply(chatOf(session), '已切回大肥鱼。')
-        } catch (e) { await host.reply(chatOf(session), `切换失败：${e.message}`) }
+        await switchToDefault(session)
         return { handled: true }
       }
 
