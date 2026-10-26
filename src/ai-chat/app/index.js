@@ -1066,13 +1066,25 @@ async function buildMessages(session, userText, extraPrompt, images) {
 async function askLLM(messages, tools) {
   const args = { messages }
   if (tools && tools.length) args.tools = tools
-  const r = await host.capability('llm.chat', args)
-  if (!r?.ok) return { ok: false, error: r?.error || 'LLM 调用失败' }
-  return {
-    ok: true,
-    text: String(r.data?.text || '').trim(),
-    toolCalls: Array.isArray(r.data?.tool_calls) ? r.data.tool_calls : [],
+  // deepseek-flash 偶尔返回空 content（只有 reasoning）：重试一次，别把空回复发给用户
+  let lastError = 'LLM 调用失败'
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const r = await host.capability('llm.chat', args)
+    if (!r?.ok) {
+      lastError = r?.error || 'LLM 调用失败'
+      if (attempt === 0 && /content|空/.test(String(lastError))) continue
+      return { ok: false, error: lastError }
+    }
+    const text = String(r.data?.text || '').trim()
+    const toolCalls = Array.isArray(r.data?.tool_calls) ? r.data.tool_calls : []
+    if (!text && !toolCalls.length) {
+      lastError = 'LLM 返回空内容'
+      if (attempt === 0) continue
+      return { ok: false, error: lastError }
+    }
+    return { ok: true, text, toolCalls }
   }
+  return { ok: false, error: lastError }
 }
 
 // 把宿主声明的工具转成 OpenAI 的 function 格式
@@ -1362,10 +1374,11 @@ function targetParts() {
   return 1
 }
 
-async function sendSplit(chat, text) {
-  // 语音模式：概率由「发语音」插件（ai-voice）的 chat_pct 决定
-  // 它说"跳过"就回退文字，这样两个插件的概率只用一处配置
-  {
+async function sendSplit(chat, text, opts = {}) {
+  const tieba = Boolean(opts.tieba)
+  // 语音模式：概率由「发语音」插件（ai-voice）的 chat_pct 决定。
+  // 贴吧模式是纯文字战斗：不配音、不发表情包、不发图。
+  if (!tieba) {
     try {
       const r = await host.capability('voice.say', {
         text,
@@ -1396,7 +1409,9 @@ async function sendSplit(chat, text) {
     }
     await host.reply(chat, parts[i])
   }
-  try { await maybeSendSticker(chat, text) } catch (e) { host.log('debug', '表情包跳过: ' + e.message) }
+  if (!tieba) {
+    try { await maybeSendSticker(chat, text) } catch (e) { host.log('debug', '表情包跳过: ' + e.message) }
+  }
   return parts.length
 }
 
@@ -1493,7 +1508,8 @@ async function respond(session, userText, extraPrompt, images) {
   }
 
   // 贴吧模式：模型偶尔偷懒只回十几个字，补一轮把总字数顶到 30 以上
-  if (await inTiebaMode(session)) {
+  const tiebaMode = await inTiebaMode(session)
+  if (tiebaMode) {
     const count = (s) => String(s || '').replace(/\s/g, '').length
     const shortLen = count(text)
     if (shortLen < 30) {
@@ -1512,8 +1528,10 @@ async function respond(session, userText, extraPrompt, images) {
   if (delay > 0) await new Promise((res) => setTimeout(res, Math.min(delay, 3000)))
 
   try {
-    const n = await sendSplit(chatOf(session), text)
+    // 贴吧模式：纯文字战斗（不发表情包/图片/语音）
+    const n = await sendSplit(chatOf(session), text, { tieba: tiebaMode })
     for (const img of toolImages) {
+      if (tiebaMode) break // 贴吧模式不发图
       const file = /^https?:\/\//.test(img) ? img : `base64://${img}`
       await host.sendMessage(chatOf(session), [{ type: 'image', data: { file } }])
     }
