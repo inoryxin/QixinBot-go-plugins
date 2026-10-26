@@ -32,7 +32,8 @@ powershell -ExecutionPolicy Bypass -File tools\pc-agent\install.ps1
 3. 等 Arch 的 `22222` 端口起来（约 1 分钟）
 4. 请求 `http://10.0.0.99:22222/launch?token=111111&app=reboot` 切 Windows
 5. 等 Windows 启动、PC 管家上线
-6. 管家拉起 ACP 桥和 DSH web，插件连上 ACP，接管私聊
+6. 如果 Windows 开着但管家被误杀：先看 3389/445，等 VBS 把管家拉回来，不会误走 HA 重启
+7. 管家拉起 ACP 桥和 DSH web（`/ensure-dsh`），插件连上 ACP，接管私聊
 
 配置项：`haUrl`、`haToken`、`haEntity`、`archPort`、`archLaunchUrl`、`bootTimeoutMs`。
 

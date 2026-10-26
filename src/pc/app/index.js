@@ -83,6 +83,18 @@ async function ensureWindows(session) {
     return true
   } catch {}
 
+  // Windows 已经开着但管家刚被关掉（比如关闭 DSH 时误杀 node）：
+  // 不要误判成电脑关机去走 HA/Arch，等管家自愈即可。
+  if ((await probePort(host, 3389)) || (await probePort(host, 445))) {
+    await host.reply(chatOf(session), 'Windows 已开机，等 PC 管家启动…')
+    const deadline = Date.now() + (Number(settings.agentWaitMs) || 60000)
+    while (Date.now() < deadline) {
+      try { await agent('/status', { timeout: 4000 }); return true } catch {}
+      await sleep(3000)
+    }
+    throw new Error('Windows 开着，但 PC 管家没起来')
+  }
+
   const archPort = Number(settings.archPort) || 22222
   if (!(await probePort(host, archPort))) {
     const entity = String(settings.haEntity || 'switch.lemesh_cn_1117316460_sw0a04_on_p_2_1')
