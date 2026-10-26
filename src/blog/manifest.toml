@@ -18,6 +18,60 @@ description = "开始一篇博客，下一条消息是标题"
 aliases = ["博客"]
 require_prefix = false
 
+[[commands]]
+id = "blog.new"
+usage = "blog 新建"
+description = "新建草稿（同 /blog 开始）"
+require_prefix = false
+
+[[commands]]
+id = "blog.write"
+usage = "blog 写 <主题>"
+description = "让 AI 根据主题生成草稿"
+require_prefix = false
+
+[[commands]]
+id = "blog.generate"
+usage = "blog 生成 <主题>"
+description = "同 /blog 写"
+require_prefix = false
+
+[[commands]]
+id = "blog.summary"
+usage = "blog 总结"
+description = "让 AI 总结最近聊天生成博客草稿"
+require_prefix = false
+
+[[commands]]
+id = "blog.send"
+usage = "blog 发送"
+description = "发布当前草稿到 Typecho"
+require_prefix = false
+
+[[commands]]
+id = "blog.sync"
+usage = "blog 发送同步"
+description = "发布当前草稿并同步到 QQ 空间"
+require_prefix = false
+
+[[commands]]
+id = "blog.cancel"
+usage = "blog 取消"
+description = "取消当前博客草稿"
+require_prefix = false
+
+[[commands]]
+id = "blog.test"
+usage = "blog 测试"
+description = "测试 Typecho XML-RPC 连接"
+require_prefix = false
+
+[[commands]]
+id = "blog.quick"
+usage = "blog <标题> | <正文>"
+description = "直接生成草稿（不发布）"
+require_prefix = false
+
 [[settings]]
 key = "enabled"
 label = "启用博客"

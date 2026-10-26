@@ -29,6 +29,12 @@ aliases = ["b站"]
 description = "查看 B 站订阅概览"
 
 [[commands]]
+id = "bili.list"
+usage = "bili list"
+description = "列出订阅的 UP 主"
+require_prefix = false
+
+[[commands]]
 id = "bili.check"
 usage = "bili check"
 description = "立即检查一次直播与动态"
