@@ -862,8 +862,13 @@ async function buildMessages(session, userText, extraPrompt, images) {
   }
   const parts = [personaLine]
 
-  // 好感度：影响语气
-  if (session.user_id) {
+  // 贴吧鱼模式：历史里机器人自己之前的软话会把语气带跑（模型会模仿最近几条），
+  // 所以这个会话只保留用户发言，好感度/生活状态这些"软化"提示也一起跳过。
+  const tiebaOn = personaFromPlugin ? await inTiebaMode(session) : false
+  host.log('debug', `prompt tieba=${tiebaOn} personaFromPlugin=${personaFromPlugin} len=${personaLine.length}`)
+
+  // 好感度：影响语气（贴吧模式下不注入——"对主人别真生气"会直接把嘴臭按回去）
+  if (session.user_id && !tiebaOn) {
     const aff = await affinityOf(session.user_id)
     if (aff) {
       const score = typeof aff.score === 'number' ? aff.score : aff.affinity
@@ -921,7 +926,7 @@ async function buildMessages(session, userText, extraPrompt, images) {
   // 她的生活：让回复带上"此刻在干嘛"（装了就生效，没装不影响）
   const life = await optionalCapability('life.now')
   host.log('debug', 'buildMessages life=' + (life?.text || '无'))
-  if (life && life.text) {
+  if (life && life.text && !tiebaOn) {
     parts.push(`你此刻的状态：${life.text}。回复必须符合这个状态——在忙就短一点，睡着被叫醒就迷糊一点。`)
   }
 
@@ -970,6 +975,8 @@ async function buildMessages(session, userText, extraPrompt, images) {
     // 群里的纯图片占位不进上下文：占 token 又提供不了信息
     // （私聊的图片会存描述，不会走到这里）
     if (session.chat_type !== 'private' && m.role === 'user' && m.content === '[图片]') continue
+    // 贴吧模式：只带群友发言，机器人以前的软话会把这一轮的语气带跑
+    if (tiebaOn && m.role === 'assistant') continue
 
     if (m.role === 'assistant') {
       messages.push({ role: 'assistant', content: m.content })

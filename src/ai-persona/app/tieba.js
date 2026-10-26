@@ -298,7 +298,7 @@ export function createTieba({ dataDir, getSettings, log = () => {}, warn = () =>
 
   function styleSection(chatKey) {
     const parts = [
-      `${HINT_HEAD}只在本群（${chatKey}）开着贴吧鱼模式，就用吧友的口吻说话，别解释、别切换回去。\n其它群/私聊保持原人设，别把这个腔调带过去。`,
+      `${HINT_HEAD}只在本群（${chatKey}）开着贴吧鱼模式，就用吧友的口吻说话，别解释、别切换回去。\n其它群/私聊保持原人设，别把这个腔调带过去。\n聊天记录里你之前的回复可能是正常语气（那是没开模式时留的），不要模仿那种语气。`,
       STYLE_RULES,
     ]
     if (identityOn()) parts.push(IDENTITY_RULES, ATTACK_RULES)
