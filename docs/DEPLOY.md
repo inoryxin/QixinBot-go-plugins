@@ -252,6 +252,8 @@ Python 插件加载时如果环境不满足，状态会是 `missing_runtime`，�
 
 SnowLuma 必须开自动注入：`config/runtime.json` 里 `hookAutoLoad: true`，启动脚本里也设 `SNOWLUMA_HOOK_AUTOLOAD=1`；否则开机后要手动「进程注入」，3001 不会自己起来。
 
+断电后主板 RTC 可能漂移，`w32time` 已设为自动并同步 `ntp.aliyun.com` / `time.windows.com`；定时类插件（催睡等）依赖本地时间，时间不对会提前/错时触发。
+
 **QQ 必须勾选「自动登录」**。Windows 自动登录只负责进入桌面，不会替 QQ 登录账号；
 没勾选的话，断电后 QQ 会停在登录窗口，SnowLuma 就不会监听 3001。
 
