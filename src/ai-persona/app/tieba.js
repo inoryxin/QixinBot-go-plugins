@@ -322,6 +322,8 @@ export function createTieba({ dataDir, getSettings, log = () => {}, warn = () =>
       : ''
     const parts = [
       `${HINT_HEAD}只在本群（${chatKey}）开着贴吧鱼模式，就用吧友的口吻说话，别解释、别切换回去。\n其它群/私聊保持原人设，别把这个腔调带过去。\n聊天记录里你之前的回复可能是正常语气（那是没开模式时留的），不要模仿那种语气。${ownerLine}`,
+      // 分人：聊天记录每行都带「昵称:」，必须只回最后说话的那个人，别把别人骂进来
+      '分人（重要）：聊天记录里每行开头「昵称:」是不同的人说的。只回应**最后一条**说话的人；不要点名、也不要攻击没跟你说话的人，更不要把 A 的话算到 B 头上。',
       STYLE_RULES,
     ]
     if (identityOn()) parts.push(IDENTITY_RULES, ATTACK_RULES)

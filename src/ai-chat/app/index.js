@@ -162,6 +162,14 @@ async function remember(session, role, content, opts = {}) {
        VALUES (?, ?, ?, ?, ?, ?)`,
       [session.chat_type, session.chat_id, uid, role, content, now()],
     )
+    // 贴吧记忆也要按 QQ 记昵称：否则上下文里全是数字，模型会认错人（把 A 骂成 B）
+    if (role === 'user' && session.user_id) {
+      await db('exec',
+        `INSERT INTO ai_user (user_id, nickname, last_seen) VALUES (?, ?, ?)
+         ON CONFLICT(user_id) DO UPDATE SET nickname = excluded.nickname, last_seen = excluded.last_seen`,
+        [session.user_id, session.nickname || '', now()],
+      )
+    }
     host.log('debug', `贴吧鱼模式：写入独立记忆（${role}）`)
     return
   }
@@ -1050,6 +1058,13 @@ async function buildMessages(session, userText, extraPrompt, images, opts = {}) 
   // 当前这句：有图就用多模态格式
   if (userText || (images && images.length)) {
     const who = session.nickname || String(session.user_id)
+    // 贴吧模式必须分人：明确告诉模型这次是谁在说话，别把火撒到别人头上
+    if (tiebaOn) {
+      messages.push({
+        role: 'system',
+        content: `这条消息是「${who}」说的（QQ ${session.user_id}）。只回${who}，不要提到、也不要攻击这次没说话的人。`,
+      })
+    }
     const last = history[history.length - 1]
     // 空文本不能拿来判重（图片消息 text 就是空的），否则整块被跳过、图片也丢了
     const duplicate = !!userText && last && last.content === userText
