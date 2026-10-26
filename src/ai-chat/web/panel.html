@@ -1,5 +1,23 @@
 <!-- AI 聊天的扩展面板：key 说明 + 人设管理 -->
 <div style="margin-top:12px;padding:12px 14px;border:1px solid var(--border);border-radius:8px;background:var(--hover)">
+  <p style="margin:0 0 6px 0"><strong>相关插件设置</strong>（各插件自己管自己的开关）</p>
+  <p class="muted" style="margin:0;line-height:1.8">
+    <a href="/plugin/ai-voice/">语音</a> ·
+    <a href="/plugin/ai-sticker/">表情包</a> ·
+    <a href="/plugin/ai-affinity/">好感度</a> ·
+    <a href="/plugin/ai-persona/">人设</a> ·
+    <a href="/plugin/ai-proactive/">主动发言</a> ·
+    <a href="/plugin/ai-life/">作息</a> ·
+    <a href="/plugin/ai-llm/">LLM 服务</a>
+  </p>
+</div>
+<script>
+function __qxCsrf(){
+  const m = document.cookie.match(/(?:^|; )qixin_csrf=([^;]+)/)
+  return m ? decodeURIComponent(m[1]) : ''
+}
+</script>
+<div style="margin-top:12px;padding:12px 14px;border:1px solid var(--border);border-radius:8px;background:var(--hover)">
   <p style="margin:0 0 8px 0"><strong>这个插件本身不存 API Key。</strong></p>
   <p class="muted" style="margin:0 0 6px 0">
     它通过能力 <code>llm.chat</code> 调用 LLM，Key 配置在
@@ -38,11 +56,15 @@
   function $(id){ return document.getElementById(id) }
   function esc(t){ return String(t).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])) }
 
+  function csrf(){
+    const m = document.cookie.match(/(?:^|; )qixin_csrf=([^;]+)/)
+    return m ? decodeURIComponent(m[1]) : ''
+  }
   async function call(args){
     const body = new FormData()
     body.set('name', 'ai.learn')
     body.set('args', JSON.stringify(args))
-    const r = await fetch('/api/capabilities/call', { method: 'POST', body })
+    const r = await fetch('/api/capabilities/call', { method: 'POST', body, headers: { 'X-CSRF-Token': __qxCsrf() } })
     const j = await r.json()
     if (!j.ok) throw new Error(j.error || '调用失败')
     const inner = j.result || {}
@@ -194,7 +216,7 @@
     const body = new FormData()
     body.set('name', 'ai.memory')
     body.set('args', JSON.stringify(args))
-    const r = await fetch('/api/capabilities/call', { method: 'POST', body })
+    const r = await fetch('/api/capabilities/call', { method: 'POST', body, headers: { 'X-CSRF-Token': __qxCsrf() } })
     const j = await r.json()
     if (!j.ok) throw new Error(j.error || '调用失败')
     const inner = j.result || {}

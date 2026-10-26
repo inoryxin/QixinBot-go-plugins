@@ -10,6 +10,7 @@
 import { serve, host, chatOf } from '../_sdk/qixin.mjs'
 
 let settings = {}
+let visionSupported = false
 
 const lastTrigger = new Map()
 
@@ -111,26 +112,7 @@ function now() {
   return Math.floor(Date.now() / 1000)
 }
 
-/** 当前会话是不是开着贴吧鱼模式（ai-persona 提供 persona.mode；没装就当没开）。 */
-async function inTiebaMode(session) {
-  try {
-    const r = await host.capability('persona.mode', {
-      chat_type: session.chat_type,
-      chat_id: session.chat_id,
-    })
-    return Boolean(r?.ok && r.data?.tieba)
-  } catch {
-    return false
-  }
-}
-
 async function remember(session, role, content) {
-  // 贴吧鱼模式开着时整段不进记忆：那种嘴臭台词存下来，
-  // 切回正常人设后模型会照着上一轮的语气接，容易出事。
-  if (await inTiebaMode(session)) {
-    host.log('debug', `贴吧鱼模式：跳过记忆写入（${role}）`)
-    return
-  }
   const uid = role === 'user' ? session.user_id : session.self_id || 0
   await db('exec',
     `INSERT INTO ai_message (chat_type, chat_id, user_id, role, content, ts)
@@ -446,11 +428,13 @@ async function optionalCapability(name, args = {}) {
 
 // 可选依赖：好感度插件装了就用，没装返回 null
 async function affinityOf(userID) {
-  if (!settings.use_affinity || !userID) return null
+  if (!userID) return null
   try {
     const r = await host.capability('affinity.get', { user_id: userID })
     if (!r?.ok) return null
-    return r.data || null
+    const data = r.data || null
+    if (data && data.enabled === false) return null
+    return data
   } catch {
     return null
   }
@@ -995,6 +979,10 @@ async function buildMessages(session, userText, extraPrompt, images) {
     }
   }
 
+  if (visionSupported && images && images.length) {
+    messages.push({ role: 'system', content: '这条消息带图片。你回复用户之后，必须另起一行输出表情包标签：如果图是表情包/梗图，输出 <<STICKER:情绪|场景1,场景2>>（情绪从 开心/难过/生气/害羞/无语/惊讶/安慰/期待/困/晚安/吃饭/摸鱼 里选一个，场景最多两个，从 打招呼/安慰/夸赞/吐槽/晚安/吃饭/摸鱼/撒娇 里选）；不是表情包就输出 <<STICKER:none>>。这一行只给后台，绝对不要向用户解释。' })
+  }
+
   // 当前这句：有图就用多模态格式
   if (userText || (images && images.length)) {
     const who = session.nickname || String(session.user_id)
@@ -1013,6 +1001,7 @@ async function buildMessages(session, userText, extraPrompt, images) {
             parts.push({ type: 'text', text: `（${who} 发了一张图片，但没能加载）` })
           }
         }
+        parts.push({ type: 'text', text: '（后台标注，不要向用户解释：回复最后另起一行输出 <<STICKER:情绪|场景1,场景2>>，情绪从 开心/难过/生气/害羞/无语/惊讶/安慰/期待/困/晚安/吃饭/摸鱼 选一个，场景从 打招呼/安慰/夸赞/吐槽/晚安/吃饭/摸鱼/撒娇 选最多两个；不是表情包就输出 <<STICKER:none>>。）' })
         messages.push({ role: 'user', content: parts })
       } else {
         messages.push({ role: 'user', content: `${who}: ${userText}` })
@@ -1038,10 +1027,33 @@ async function askLLM(messages, tools) {
 }
 
 // 把宿主声明的工具转成 OpenAI 的 function 格式
-async function loadToolDefs(session) {
+function toolAllowed(name, text) {
+  const t = String(text || '')
+  if (name === 'get_qixin_status') return /祈歆|雪然|状态|在线|在干嘛/.test(t)
+  if (name === 'mix_emoji') {
+    const emojis = t.match(/\p{Extended_Pictographic}(?:\uFE0F|\u200D\p{Extended_Pictographic})*/gu) || []
+    return /合成|合一下|mix|组合/i.test(t) && emojis.length >= 2
+  }
+  if (name === 'roll_pig') return /猪/.test(t)
+  if (name === 'draw_fortune') return /运势|抽签|求签|fortune/i.test(t)
+  if (name === 'weather_query') return /天气|气温|下雨|温度/.test(t)
+  if (name === 'check_bilibili_live') return /直播|开播|b站/i.test(t)
+  if (name === 'get_cngal_weekly') return /国g|gal|周报|国产/i.test(t)
+  if (name === 'life_now' || name === 'life_plan') return /在干嘛|干嘛|生活|日程|明天|睡|上班|下班/.test(t)
+  if (name === 'ts3_status') return /ts3?|ts\s*上|谁在|在线/.test(t)
+  if (name === 'what_to_eat') return /吃|喝|饿|饭|夜宵/.test(t)
+  if (name === 'home_control' || name === 'home_environment' || name === 'home_list') {
+    return /灯|空调|温度|湿度|环境|家里|回家|设备|home/i.test(t)
+  }
+  if (name === 'list_triggers') return /触发词|关键词|有哪些指令|指令列表/.test(t)
+  // 没有明确意图的就不给模型工具，避免它瞎调
+  return false
+}
+
+async function loadToolDefs(session, text) {
   try {
     const tools = await host.listTools(session)
-    return (tools || []).map((t) => ({
+    return (tools || []).filter((t) => toolAllowed(t.name, text)).map((t) => ({
       type: 'function',
       function: {
         name: t.name,
@@ -1067,8 +1079,9 @@ async function runToolCall(call, session) {
     // 工具走 host.callTool，不是 host.capability —— 两条不同的通道
     const r = await host.callTool(name, args, session || null)
     if (r?.ok) {
-      const text = r.data?.text ?? JSON.stringify(r.data ?? '')
-      return { ok: true, text: String(text) }
+      const image = r.data?.image || null
+      const text = r.data?.text ?? (image ? '图片已生成' : JSON.stringify(r.data ?? ''))
+      return { ok: true, text: String(text), image }
     }
     return { ok: false, text: r?.error || '工具执行失败' }
   } catch (err) {
@@ -1093,6 +1106,11 @@ function shouldTrigger(session) {
   const chance = Math.max(0, Math.min(100,
     Number(settings.group_chance_pct ?? settings.trigger_prob) || 0))
   if (chance <= 0) return false
+
+  // 水群群号白名单（留空 = 全部）
+  const allow = String(settings.water_groups || '')
+    .split(/[,，|\s]+/).map((x) => x.trim()).filter(Boolean).map(Number)
+  if (allow.length && !allow.includes(Number(session.chat_id))) return false
 
   const key = session.chat_type + ':' + session.chat_id
   const cd = Math.max(0, Number(settings.cooldown) || 0) * 1000
@@ -1296,20 +1314,22 @@ function targetParts() {
 }
 
 async function sendSplit(chat, text) {
-  // 语音模式：整条回复转成语音发出去（不再发文字）
-  if (settings.voice_reply) {
+  // 语音模式：概率由「发语音」插件（ai-voice）的 chat_pct 决定
+  // 它说"跳过"就回退文字，这样两个插件的概率只用一处配置
+  {
     try {
       const r = await host.capability('voice.say', {
         text,
         chat_type: chat.chat_type,
         chat_id: chat.chat_id,
         account: chat.account || '',
+        source: 'chat',
       })
       if (r?.ok) {
-        host.log('info', '语音回复已发送')
+        host.log('info', `语音回复已发送 p=${r.pct ?? '?'}%`)
         return 1
       }
-      host.log('warn', '语音失败，回退文字: ' + (r?.error || ''))
+      host.log('debug', `语音跳过/失败，回退文字: ${r?.error || r?.skipped || ''}`)
     } catch (e) {
       host.log('warn', '语音失败，回退文字: ' + e.message)
     }
@@ -1327,7 +1347,41 @@ async function sendSplit(chat, text) {
     }
     await host.reply(chat, parts[i])
   }
+  try { await maybeSendSticker(chat, text) } catch (e) { host.log('debug', '表情包跳过: ' + e.message) }
   return parts.length
+}
+
+// 按概率给回复配一张表情包（由 ai-sticker 提供，插件不存在就静默跳过）
+function stickerEmotion(text) {
+  const t = String(text || '')
+  if (/晚安|睡了|困/.test(t)) return '晚安'
+  if (/哈哈|笑|开心|好耶|嘿嘿/.test(t)) return '开心'
+  if (/难过|哭|委屈|呜呜/.test(t)) return '难过'
+  if (/生气|气死|烦|讨厌/.test(t)) return '生气'
+  if (/害羞|脸红|喜欢|么么|亲/.test(t)) return '害羞'
+  if (/无语|离谱|服了/.test(t)) return '无语'
+  if (/吃|饿|饭/.test(t)) return '吃饭'
+  if (/摸鱼|累|躺/.test(t)) return '摸鱼'
+  return '开心'
+}
+
+async function maybeSendSticker(chat, text) {
+  const emotion = stickerEmotion(text)
+  const r = await host.capability('sticker.pick', {
+    emotion,
+    chat_type: chat?.chat_type || 'group',
+    chat_id: chat?.chat_id || 0,
+    source: 'chat',
+  })
+  const url = r?.sticker?.data_url || r?.sticker?.url
+  if (!r?.ok || !url) return
+  let file = url
+  if (url.startsWith('data:')) {
+    const b64 = url.slice(url.indexOf(',') + 1)
+    file = 'base64://' + b64
+  }
+  await host.sendMessage(chat, [{ type: 'image', data: { file } }])
+  host.log('info', `表情包已发送 ${emotion}`)
 }
 
 async function respond(session, userText, extraPrompt, images) {
@@ -1337,19 +1391,23 @@ async function respond(session, userText, extraPrompt, images) {
   const messages = await buildMessages(session, userText, extraPrompt, images)
   host.log('info', `respond 上下文就绪 msgs=${messages.length} 耗时=${Date.now() - t0}`)
 
-  const tools = await loadToolDefs(session)
+  const tools = await loadToolDefs(session, userText)
   let r = await askLLM(messages, tools)
   host.log('info', `respond LLM ${r.ok ? 'ok' : 'fail:' + r.error} tools=${tools.length} 耗时=${Date.now() - t0}`)
   if (!r.ok) return { ok: false, error: r.error }
 
   // 模型要调工具：执行后把结果喂回去，最多循环 3 轮
   let rounds = 0
+  const toolImages = []
+  let lastToolText = '' 
   while (r.toolCalls.length && rounds < 3) {
     rounds++
     messages.push({ role: 'assistant', content: r.text || '', tool_calls: r.toolCalls })
 
     for (const call of r.toolCalls) {
       const result = await runToolCall(call, session)
+      if (result.image) toolImages.push(result.image)
+      if (result.text) lastToolText = result.text
       host.log('info', `工具 ${call?.function?.name} -> ${result.ok ? 'ok' : 'fail'} ${result.text.slice(0, 60)}`)
       messages.push({
         role: 'tool',
@@ -1363,15 +1421,38 @@ async function respond(session, userText, extraPrompt, images) {
     host.log('info', `工具回合 ${rounds} 完成，还有 ${r.toolCalls.length} 个待调`)
   }
 
-  if (!r.text) return { ok: false, error: 'LLM 没有产出文本' }
-  const text = r.text
+  if (!r.text) {
+    // 模型偶尔空回复：有工具结果就用工具结果，没有就给一句兜底，绝不静默
+    r.text = lastToolText || '嗯？'
+  }
+  let text = r.text
+  // 主对话那次调用顺手带回的表情标签：剥掉后入库，不额外调视觉模型
+  const tagMatch = /<<STICKER:([^>]+)>>/.exec(text)
+  if (tagMatch) {
+    text = text.replace(tagMatch[0], '').trim()
+    const val = tagMatch[1].trim()
+    if (val && val !== 'none' && images && images.length &&
+        (session.chat_type === 'private' || !session.mentioned)) {
+      const [emotionRaw, ctxRaw = ''] = val.split('|')
+      const emotion = emotionRaw.trim() || '开心'
+      const contexts = ctxRaw.split(/[,，]/).map((x) => x.trim()).filter(Boolean).slice(0, 2)
+      toDataURL(images[0]).then((d) => host.capability('sticker.add', {
+        data_url: d, emotion, contexts,
+        source: session.chat_type === 'private' ? 'private' : 'water',
+      })).then(() => host.log('info', `顺手收藏表情包 ${emotion}`)).catch(() => {})
+    }
+  }
 
   const delay = Math.max(0, Number(settings.reply_typing) || 0)
   if (delay > 0) await new Promise((res) => setTimeout(res, Math.min(delay, 3000)))
 
   try {
     const n = await sendSplit(chatOf(session), text)
-    host.log('info', `respond 已发送 parts=${n} 耗时=${Date.now() - t0}`)
+    for (const img of toolImages) {
+      const file = /^https?:\/\//.test(img) ? img : `base64://${img}`
+      await host.sendMessage(chatOf(session), [{ type: 'image', data: { file } }])
+    }
+    host.log('info', `respond 已发送 parts=${n} 图片=${toolImages.length} 耗时=${Date.now() - t0}`)
   } catch (err) {
     host.log('error', '发送失败: ' + err.message)
     return { ok: false, error: err.message }
@@ -1385,7 +1466,11 @@ async function respond(session, userText, extraPrompt, images) {
 serve({
   async initialize({ settings: initial }) {
     settings = initial || {}
-    host.log('info', `AI 聊天启动，模式=${settings.trigger_mode || 'mention'}`)
+    try {
+      const info = await host.capability('llm.info', {})
+      visionSupported = info?.data?.vision === true
+    } catch {}
+    host.log('info', `AI 聊天启动（vision=${visionSupported}），模式=${settings.trigger_mode || 'mention'}`)
     return { api_version: '1.0' }
   },
 
@@ -1436,12 +1521,21 @@ serve({
       return { handled: true }
     }
 
+    // 纯图片群消息：不水群、不回复，但可以按偷图概率静默收藏
+    // 有些协议端会把纯图消息的 text 填成 "[图片]" / "[动画表情]"，不能只看 text 是否为空
     const trig = shouldTrigger(session)
     host.log('info', 'H4 shouldTrigger=' + trig)
     if (!trig) return { handled: false }
 
     const cleaned = text.replace(/^@\S+\s*/, '').trim() || text
     const images = imageURLsOf(session)
+    // 没有视觉模型时：私聊/水群带图先存"待分类"，不浪费视觉调用
+    if (!visionSupported && images.length &&
+        (session.chat_type === 'private' || !session.mentioned)) {
+      for (const u of images.slice(0, 2)) {
+        toDataURL(u).then((d) => host.capability('sticker.learn', { data_url: d, source: 'water' })).catch(() => {})
+      }
+    }
     lastTrigger.set(session.chat_type + ':' + session.chat_id, Date.now())
     host.log('info', 'H5 进入 respond images=' + images.length)
 
@@ -1525,7 +1619,7 @@ async function toolChat(args) {
   // 没指定会话：只生成不发送，但工具一样要给（否则问「灯关了吗」它只会瞎猜）
   if (!session.chat_id) {
     const messages = await buildMessages(session, text, prompt, imgs)
-    const tools = await loadToolDefs(session)
+    const tools = await loadToolDefs(session, userText)
     host.log('info', `纯生成 tools=${tools.length} [${tools.map((t) => t.function.name).join(',')}]`)
     let r = await askLLM(messages, tools)
     if (!r.ok) return { ok: false, error: r.error }

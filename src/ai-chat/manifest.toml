@@ -1,6 +1,6 @@
 id = "ai-chat"
 name = "AI 聊天"
-version = "1.0.1"
+version = "1.0.0"
 apiVersion = "1.x"
 exec = ["node", "app/index.js"]
 description = "会记住每个人的对话；人设由 ai-persona 插件提供，没装时用内置的"
@@ -275,19 +275,6 @@ type = "number"
 default = 15
 
 [[settings]]
-key = "use_affinity"
-label = "接入好感度"
-type = "boolean"
-default = true
-
-[[settings]]
-key = "voice_reply"
-label = "用语音回复（整条转语音）"
-type = "bool"
-default = false
-hint = "需要装「发语音」插件（ai-voice）"
-
-[[settings]]
 key = "split_enabled"
 label = "分段发送（像真人一句一句发）"
 type = "bool"
@@ -344,7 +331,10 @@ default = 300
 min = 0
 max = 5000
 
-# ---- 共享数据：人设 ----
-[runtime]
-kind = "node"
-version = ">=18"
+[[settings]]
+key = "water_groups"
+label = "只在这些群水群（留空=全部群）"
+type = "string"
+default = ""
+hint = "群号用逗号或 | 分隔；不影响被 @ 时回复"
+
