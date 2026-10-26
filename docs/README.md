@@ -326,6 +326,7 @@ plugins/              投放区：丢 .anzu 进来自动装
 | [ANZU.md](./ANZU.md) | `.anzu` 包格式、签名、目录布局 |
 | [PROTOCOL.md](./PROTOCOL.md) | 传输层细节、时序、错误码 |
 | [SNOWLUMA.md](./SNOWLUMA.md) | 协议端对接 |
+| [PC.md](./PC.md) | PC 管家：状态/截图/操作/DSH 唤醒与接管 |
 | [DEPLOY.md](./DEPLOY.md) | 部署与运维 |
 | [REQUIREMENTS.md](./REQUIREMENTS.md) | 需求表与里程碑 |
 

@@ -2622,8 +2622,7 @@ async handle_message({ session }) {
   const text = (session.text ?? '').trim()
   if (text !== 'bind') return { handled: false }
 
-  const chat = chatOf(session)
-  chat.user_id = session.user_id
+  const chat = chatOf(session)   // 已包含 user_id，宿主按"谁回答"投递
 
   const name = await host.ask(chat, '请输入要绑定的名字（30 秒内）：', { timeout_sec: 30 })
   if (!name) {

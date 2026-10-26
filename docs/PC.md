@@ -21,7 +21,10 @@ powershell -ExecutionPolicy Bypass -File tools\pc-agent\install.ps1
 - 如果 agent 退出，5 秒后自动拉起
 - 监听 `0.0.0.0:3097`
 
-默认 token：`pc-7f3a91c2`，可用环境变量 `PC_AGENT_TOKEN` 改。
+token 必须显式提供（`-token` 参数或 `PC_AGENT_TOKEN` 环境变量），
+没有就拒绝启动——源码里不再有默认值。首次安装跑 `install.ps1`
+会随机生成并存到 `token.txt`，把它填进 pc 插件的设置里。
+旧部署如果还在用源码里出现过的 `pc-7f3a91c2`，请换掉。
 
 ## 进入大肥鱼模式的完整流程
 

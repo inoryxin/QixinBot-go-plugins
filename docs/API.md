@@ -99,8 +99,11 @@ if (!r?.ok) {
 }
 ```
 
-**能力调用会自动降级**：提供者没运行、超时、内部错误时，
-框架会按优先级试下一个提供者；参数错和权限错不会重试（换谁都一样）。
+**能力调用默认不自动降级**：能力可能有副作用（发消息、扣款、控设备），
+失败直接返回错误，不会换个提供者再执行一遍。
+manifest 里声明 `retry = "always"` 的能力，超时/不可用/内部错误时
+才会按优先级试下一个提供者；参数错和权限错永远不重试（换谁都一样）。
+提供者没运行的会先尝试唤醒，唤醒失败就跳到下一个。
 
 **`[[requires]]` 声明依赖**（框架加载时会检查，缺了给你 `missing_dependency` 而不是崩溃）：
 
@@ -600,8 +603,7 @@ my-plugin   生成日报    group:123456    15:04:05   运行中
 分步交互（绑定账号、设置向导、小游戏）不用自己存状态：
 
 ```js
-const chat = chatOf(session)
-chat.user_id = session.user_id
+const chat = chatOf(session)   // 已包含 user_id，宿主按"谁回答"投递
 
 const name = await host.ask(chat, '请输入要绑定的名字（30 秒内）：', { timeout_sec: 30 })
 if (!name) {
@@ -617,7 +619,7 @@ await host.reply(chat, `绑定成功：${name}`)
 |---|---|
 | `chat` | `{chat_type, chat_id, account?}`，发提示语用 |
 | `text` | 提示语（空则不发送，只等） |
-| `user_id` | 等谁的消息（必填） |
+| `user_id` | 等谁的消息；`chatOf()` 的返回值已带上，只有自己拼 chat 时才需要显式传 |
 | `timeout_sec` | 超时秒数，默认 60 |
 
 **返回**：
