@@ -1,4 +1,4 @@
-<!-- 发语音：试听 + 缓存 -->
+<!-- 发语音：试听 + 缓存；转语音概率统一在插件设置 chat_pct，不再重复放这里 -->
 <h2 style="margin-top:8px">试听</h2>
 <p class="muted" style="margin:0 0 10px">
   选个音色、输一句话，浏览器里直接播——不用发到群里。
@@ -13,18 +13,6 @@
   <button onclick="vcPlay()">试听</button>
 </div>
 <div id="vc-status" class="muted" style="margin-bottom:10px">就绪</div>
-
-<h2 style="margin-top:20px">语音回复概率</h2>
-<p class="muted" style="margin:0 0 10px">
-  这个设置属于 AI 聊天（是它决定回文字还是回语音），这里只是快捷入口。
-  0 = 只发文字，100 = 每条都语音。
-</p>
-<div class="row" style="gap:8px;align-items:center;margin-bottom:14px">
-  <input type="number" id="vc-prob" min="0" max="100" value="50" style="width:90px">
-  <span class="muted">%</span>
-  <button onclick="vcSaveProb()">保存概率</button>
-  <span id="vc-prob-msg" class="muted"></span>
-</div>
 
 <h2 style="margin-top:20px">缓存</h2>
 <div class="row" style="gap:10px;align-items:center">
@@ -85,26 +73,6 @@
     } catch (e) { $('vc-cache').textContent = '读取失败：' + e.message }
   }
 
-  async function loadProb(){
-    try {
-      const r = await fetch('/api/plugin/ai-chat/settings')
-      const j = await r.json()
-      if (j.values && j.values.voice_prob_pct !== undefined) $('vc-prob').value = j.values.voice_prob_pct
-    } catch {}
-  }
-
-  window.vcSaveProb = async function(){
-    const v = Math.max(0, Math.min(100, Number($('vc-prob').value) || 0))
-    const body = new FormData()
-    body.set('_keys', 'voice_prob_pct')
-    body.set('voice_prob_pct', String(v))
-    try {
-      const r = await fetch('/api/plugin/ai-chat/settings', { method: 'POST', body })
-      if (!r.ok) throw new Error('HTTP ' + r.status)
-      $('vc-prob-msg').textContent = '已保存 ' + v + '%'
-    } catch (e) { $('vc-prob-msg').textContent = '失败：' + e.message }
-  }
-
   async function init(){
     const sel = $('vc-voice')
     sel.innerHTML = ''
@@ -122,7 +90,6 @@
       if (j.values && j.values.rate) $('vc-rate').value = j.values.rate
     } catch {}
     vcRefresh()
-    loadProb()
   }
 
   init()
