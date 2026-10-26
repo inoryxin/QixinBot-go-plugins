@@ -139,10 +139,24 @@ async function inTiebaMode(session) {
   }
 }
 
-async function remember(session, role, content) {
+/** 主人 QQ：框架注入的 QIXIN_OWNER（权限页「主人 QQ」），逗号分隔。 */
+function ownerUsers() {
+  return String(process.env.QIXIN_OWNER || '')
+    .split(',')
+    .map((x) => Number(String(x).trim()))
+    .filter((n) => Number.isFinite(n) && n > 0)
+}
+
+function isOwnerQQ(userID) {
+  const id = Number(userID)
+  return Boolean(id) && ownerUsers().includes(id)
+}
+
+async function remember(session, role, content, opts = {}) {
   const uid = role === 'user' ? session.user_id : session.self_id || 0
   // 贴吧鱼模式：写进独立表，不动 ai_message（切回正常后不会串味）
-  if (await inTiebaMode(session)) {
+  // opts.normal = 主人说话 / 主人被特殊处理时，照常进正常记忆
+  if (!opts.normal && await inTiebaMode(session)) {
     await db('exec',
       `INSERT INTO ai_tieba_message (chat_type, chat_id, user_id, role, content, ts)
        VALUES (?, ?, ?, ?, ?, ?)`,
@@ -872,7 +886,7 @@ async function toDataURL(url) {
 
 // ---------------------------------------------------------------- 组装 prompt
 
-async function buildMessages(session, userText, extraPrompt, images) {
+async function buildMessages(session, userText, extraPrompt, images, opts = {}) {
   // 系统提示词由 ai-persona 插件统一提供（人设、自称、风格都在那边）。
   // 拿不到（没装/挂了）就用一句兜底，别让对话整个失败。
   let personaLine = ''
@@ -881,6 +895,7 @@ async function buildMessages(session, userText, extraPrompt, images) {
     const pr = await host.capability('persona.render', {
       chat_type: session.chat_type,
       chat_id: session.chat_id,
+      no_tieba: Boolean(opts.noTieba),
     })
     if (pr?.ok && pr.data?.system) {
       personaLine = pr.data.system
@@ -902,7 +917,7 @@ async function buildMessages(session, userText, extraPrompt, images) {
 
   // 贴吧鱼模式：历史里机器人自己之前的软话会把语气带跑（模型会模仿最近几条），
   // 所以这个会话只保留用户发言，好感度/生活状态这些"软化"提示也一起跳过。
-  const tiebaOn = personaFromPlugin ? await inTiebaMode(session) : false
+  const tiebaOn = personaFromPlugin && !opts.noTieba ? await inTiebaMode(session) : false
   host.log('debug', `prompt tieba=${tiebaOn} personaFromPlugin=${personaFromPlugin} len=${personaLine.length}`)
 
   // 好感度：影响语气（贴吧模式下不注入——"对主人别真生气"会直接把嘴臭按回去）
@@ -1448,11 +1463,11 @@ async function maybeSendSticker(chat, text) {
   host.log('info', `表情包已发送 ${emotion}`)
 }
 
-async function respond(session, userText, extraPrompt, images) {
+async function respond(session, userText, extraPrompt, images, opts = {}) {
   const t0 = Date.now()
   host.log('info', `respond 开始 images=${(images || []).length}`)
 
-  const messages = await buildMessages(session, userText, extraPrompt, images)
+  const messages = await buildMessages(session, userText, extraPrompt, images, opts)
   host.log('info', `respond 上下文就绪 msgs=${messages.length} 耗时=${Date.now() - t0}`)
 
   const tools = await loadToolDefs(session, userText)
@@ -1508,7 +1523,7 @@ async function respond(session, userText, extraPrompt, images) {
   }
 
   // 贴吧模式：模型偶尔偷懒只回十几个字，补一轮把总字数顶到 30 以上
-  const tiebaMode = await inTiebaMode(session)
+  const tiebaMode = !opts.noTieba && await inTiebaMode(session)
   if (tiebaMode) {
     const count = (s) => String(s || '').replace(/\s/g, '').length
     const shortLen = count(text)
@@ -1540,7 +1555,7 @@ async function respond(session, userText, extraPrompt, images) {
     host.log('error', '发送失败: ' + err.message)
     return { ok: false, error: err.message }
   }
-  await remember(session, 'assistant', text)
+  await remember(session, 'assistant', text, { normal: Boolean(opts.noTieba) })
   return { ok: true, text }
 }
 
@@ -1607,9 +1622,12 @@ serve({
     // 纯图片群消息：不水群、不回复，但可以按偷图概率静默收藏
     // 有些协议端会把纯图消息的 text 填成 "[图片]" / "[动画表情]"，不能只看 text 是否为空
     // 贴吧模式：不 @ 也回（80%），不受 @设置/冷却限制 —— 要的就是战斗
+    // 主人例外：照常按 @/私聊规则回，而且用正常人设（不骂主人）
     const tiebaOn = await inTiebaMode(session)
-    const trig = tiebaOn ? Math.random() * 100 < 80 : shouldTrigger(session)
-    host.log('info', `H4 shouldTrigger=${trig} tieba=${tiebaOn}`)
+    const owner = isOwnerQQ(session.user_id)
+    const battle = tiebaOn && !owner
+    const trig = battle ? Math.random() * 100 < 80 : (owner && tiebaOn ? true : shouldTrigger(session))
+    host.log('info', `H4 shouldTrigger=${trig} tieba=${tiebaOn} owner=${owner}`)
     if (!trig) return { handled: false }
 
     const cleaned = text.replace(/^@\S+\s*/, '').trim() || text
@@ -1625,7 +1643,7 @@ serve({
     host.log('info', 'H5 进入 respond images=' + images.length)
 
     try {
-      await respond(session, cleaned, null, images)
+      await respond(session, cleaned, null, images, { noTieba: tiebaOn && owner })
       host.log('info', 'H6 respond 返回')
     } catch (err) {
       host.log('error', '回复失败: ' + err.message)
@@ -1657,7 +1675,7 @@ serve({
       }
       if (!content) return {}
 
-      await remember(session, 'user', content)
+      await remember(session, 'user', content, { normal: isOwnerQQ(session.user_id) })
       return {}
     } catch (e) {
       host.log('debug', 'observe 记录失败: ' + e.message)

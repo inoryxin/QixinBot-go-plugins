@@ -2123,6 +2123,7 @@ process.env.QIXIN_ASSETS_DIR    // assets/ 的绝对路径
 process.env.QIXIN_PLUGIN_DIR    // 运行区根目录
 process.env.QIXIN_DATA_DIR      // 持久数据目录
 process.env.QIXIN_PLUGIN_ID     // 插件 id
+process.env.QIXIN_OWNER         // 主人 QQ，逗号分隔（来自权限页「主人 QQ」）；没配就没有这个变量
 ```
 
 ```js

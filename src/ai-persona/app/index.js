@@ -120,7 +120,7 @@ async function currentName(chatType, chatID) {
 
 // ---------------------------------------------------------------- 渲染
 
-async function render(chatType, chatID) {
+async function render(chatType, chatID, opts = {}) {
   await ensureReady()
   const { scope, name } = await currentName(chatType, chatID)
   const p = await getPersona(name)
@@ -131,7 +131,7 @@ async function render(chatType, chatID) {
   if (settings.speaking_style) parts.push(`说话风格：${settings.speaking_style}`)
 
   // 贴吧鱼模式：只对这个会话开着时追加（口吻 + 本轮语料抽样）
-  const tiebaParts = tieba?.promptParts(chatType, chatID) || []
+  const tiebaParts = opts.noTieba ? [] : (tieba?.promptParts(chatType, chatID) || [])
   const tiebaOn = tiebaParts.length > 0
 
   // 群语气和黑话：从 AI 聊天插件的 ai.learn 能力取。
@@ -332,7 +332,7 @@ serve({
     })
     tieba.load()
     await ensureReady()
-    host.log('info', '人设服务已启动（含贴吧鱼模式）')
+    host.log('info', '人设服务已启动（含贴吧鱼模式）主人 QQ=' + (process.env.QIXIN_OWNER || '（未注入）'))
     return { api_version: '1.0' }
   },
 
@@ -358,7 +358,7 @@ serve({
   async call_tool({ name, args }) {
     if (name === 'persona.render') {
       try {
-        return { ok: true, data: await render(args?.chat_type, args?.chat_id) }
+        return { ok: true, data: await render(args?.chat_type, args?.chat_id, { noTieba: Boolean(args?.no_tieba) }) }
       } catch (e) {
         return { ok: false, error: e.message }
       }
