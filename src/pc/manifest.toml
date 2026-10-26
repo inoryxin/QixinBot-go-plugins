@@ -1,0 +1,138 @@
+id = "pc"
+name = "电脑"
+version = "1.0.0"
+apiVersion = "1.x"
+exec = ["node", "app/index.js"]
+description = "一台 PC 一个管家：状态、截图、关机/重启/锁屏、唤醒 DSH 并把 QQ 聊天交给 DSH"
+priority = 10
+permissions = ["onebot.dangerous"]
+
+[access]
+require_prefix = false
+require_mention = false
+
+[[commands]]
+id = "pc.status"
+usage = "电脑"
+description = "查看这台 PC 的 CPU/内存/磁盘/电池"
+
+[[commands]]
+id = "pc.screenshot"
+usage = "截图"
+description = "截取这台 PC 的当前屏幕"
+
+[[commands]]
+id = "pc.action"
+usage = "电脑操作 <关机|重启|睡眠|锁屏|注销>"
+description = "操作这台 PC"
+
+[[commands]]
+id = "pc.dsh.enter"
+usage = "进入大肥鱼模式"
+description = "唤醒 DSH（web + ACP 桥），把私聊交给 DSH"
+
+[[commands]]
+id = "pc.dsh.exit"
+usage = "退出大肥鱼模式 [并关机]"
+description = "退出 DSH 接管；可选关机"
+
+[[commands]]
+id = "pc.dsh.new"
+usage = "新会话"
+description = "在 DSH 里新建会话"
+
+[[commands]]
+id = "pc.dsh.list"
+usage = "会话列表"
+description = "列出 DSH 会话"
+
+[[commands]]
+id = "pc.dsh.switch"
+usage = "切换 <序号>"
+description = "切换到指定 DSH 会话"
+
+[[commands]]
+id = "pc.dsh.default"
+usage = "切换大肥鱼"
+description = "切回默认 DSH 会话"
+
+[[tools]]
+name = "get_pc_status"
+description = "查看老公这台 Windows PC 的 CPU、内存、磁盘、电池和运行时长。"
+
+[tools.parameters]
+type = "object"
+
+[[tools]]
+name = "pc_screenshot"
+description = "截取老公这台 Windows PC 的当前屏幕并发到聊天里。"
+
+[tools.parameters]
+type = "object"
+
+[[tools]]
+name = "pc_action"
+description = "操作老公这台 Windows PC：关机、重启、睡眠、锁屏、注销。"
+
+[tools.parameters]
+type = "object"
+required = ["action"]
+
+[tools.parameters.properties.action]
+type = "string"
+enum = ["shutdown", "restart", "sleep", "hibernate", "lock", "logoff"]
+
+[[tools]]
+name = "get_dsh_status"
+description = "查看 DSH 是否连通、当前大肥鱼模式状态和会话。"
+
+[tools.parameters]
+type = "object"
+
+[[settings]]
+key = "agentHost"
+label = "PC 管家地址"
+type = "string"
+default = "10.0.0.99:3097"
+
+[[settings]]
+key = "agentToken"
+label = "PC 管家 Token"
+type = "password"
+default = "pc-7f3a91c2"
+
+[[settings]]
+key = "acpHost"
+label = "ACP 桥地址"
+type = "string"
+default = "10.0.0.99"
+
+[[settings]]
+key = "acpPort"
+label = "ACP 桥端口"
+type = "number"
+default = 3099
+
+[[settings]]
+key = "acpToken"
+label = "ACP Token"
+type = "password"
+default = "111111"
+
+[[settings]]
+key = "workspace"
+label = "DSH 工作区"
+type = "string"
+default = "C:\\Users\\anzu\\Documents\\xin"
+
+[[settings]]
+key = "webUrl"
+label = "DSH 网页地址（可留空）"
+type = "string"
+default = ""
+
+[[settings]]
+key = "promptTimeoutMs"
+label = "DSH 回复超时（毫秒）"
+type = "number"
+default = 7200000
