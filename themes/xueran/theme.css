@@ -1,0 +1,127 @@
+/* ================================================
+   🐱 许雪然 —— QixinBot 控制台主题
+   导航页（home.inory.xin）同款观感：
+   粉彩玻璃卡片 · 品牌换成雪然 logo · 左下立绘 · 右下看板娘
+   色板变量在 manifest.toml，本文件管"气质"。
+   ================================================ */
+
+/* ---- 背景：导航页同款粉彩渐变 ---- */
+body {
+  background:
+    radial-gradient(1000px 520px at 90% -6%, rgba(255, 158, 199, 0.30), transparent 58%),
+    radial-gradient(860px 480px at -6% 106%, rgba(255, 205, 227, 0.38), transparent 60%),
+    radial-gradient(600px 380px at 50% 118%, rgba(255, 183, 213, 0.22), transparent 65%),
+    var(--bg) !important;
+  min-height: 100vh;
+}
+
+/* ---- 玻璃卡片基座（白玻璃 + 粉边） ---- */
+.nav,
+.card,
+table,
+.form-box,
+.login-box,
+.chat-side,
+.chat-main,
+details.hg {
+  background: rgba(255, 255, 255, 0.78) !important;
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(247, 143, 179, 0.30) !important;
+  border-radius: 18px !important;
+  box-shadow: 0 6px 24px rgba(247, 143, 179, 0.16) !important;
+}
+
+.nav { border-radius: 0 0 18px 18px !important; }
+button { border-radius: 9px !important; }
+button.primary { box-shadow: 0 3px 14px rgba(247, 143, 179, 0.35); }
+.card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 28px rgba(247, 143, 179, 0.26) !important;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+/* ---- 品牌：QixinBot 文字换成雪然猫 logo ---- */
+.nav .brand {
+  color: transparent !important;
+  width: 132px;
+  height: 44px;
+  background: url("/ui/theme/xueran/assets/logo.png") no-repeat left center;
+  background-size: contain;
+  overflow: hidden;
+  font-size: 0;
+}
+
+/* ---- 左下：雪然坐姿立绘（宽屏才显示，别压住内容） ---- */
+body::before {
+  content: "";
+  position: fixed;
+  left: -18px;
+  bottom: -14px;
+  width: 300px;
+  height: 336px;
+  background: url("/ui/theme/xueran/assets/xueran-desk.png") no-repeat left bottom;
+  background-size: contain;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.96;
+}
+@media (max-width: 1500px) {
+  body::before { opacity: 0.45; }
+}
+@media (max-width: 1250px) {
+  body::before { display: none; }
+}
+
+/* ---- 右下：看板娘小人（导航页同款），上下浮动打招呼 ---- */
+body::after {
+  content: "";
+  position: fixed;
+  right: 14px;
+  bottom: 0;
+  width: 118px;
+  height: 210px;
+  background: url("/ui/theme/xueran/assets/chibi-q1.png") no-repeat center bottom;
+  background-size: contain;
+  pointer-events: none;
+  z-index: 2;
+  animation: xueran-bob 3.2s ease-in-out infinite;
+  filter: drop-shadow(0 6px 14px rgba(247, 143, 179, 0.35));
+}
+@keyframes xueran-bob {
+  0%, 100% { transform: translateY(0) rotate(-1.2deg); }
+  50%      { transform: translateY(-9px) rotate(1.2deg); }
+}
+
+/* 内容压在装饰层上 */
+.nav, .wrap { position: relative; z-index: 1; }
+
+/* ---- 夜间：整体验收敛，立绘和小人调暗一点 ---- */
+:root[data-theme=dark] body {
+  background:
+    radial-gradient(1000px 520px at 90% -6%, rgba(255, 158, 199, 0.14), transparent 58%),
+    radial-gradient(860px 480px at -6% 106%, rgba(124, 157, 255, 0.10), transparent 60%),
+    var(--bg) !important;
+}
+:root[data-theme=dark] .nav,
+:root[data-theme=dark] .card,
+:root[data-theme=dark] table,
+:root[data-theme=dark] .form-box,
+:root[data-theme=dark] .login-box,
+:root[data-theme=dark] .chat-side,
+:root[data-theme=dark] .chat-main,
+:root[data-theme=dark] details.hg {
+  background: rgba(40, 28, 46, 0.80) !important;
+  border-color: rgba(255, 158, 199, 0.22) !important;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.38) !important;
+}
+:root[data-theme=dark] body::before { opacity: 0.55; }
+:root[data-theme=dark] body::after {
+  opacity: 0.85;
+  filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.5));
+}
+
+/* 动画敏感用户：立绘小人保留但停止浮动 */
+@media (prefers-reduced-motion: reduce) {
+  body::after { animation: none; }
+}
