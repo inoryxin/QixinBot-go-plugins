@@ -266,7 +266,7 @@ async function pickSticker({ emotion, context, chat_type, chat_id, source }) {
 
 // 用视觉模型判断图片是不是表情包并打标签
 async function classifyImage(dataUrl) {
-  const prompt = '判断这张图是不是聊天用的表情包/梗图。只输出 JSON：{"is_sticker":true/false,"emotion":"开心|难过|生气|害羞|无语|惊讶|安慰|期待|困|晚安|吃饭|摸鱼 之一","contexts":["打招呼","安慰","夸赞","吐槽","晚安","吃饭","摸鱼","撒娇"] 中最多两个}。不是表情包就 is_sticker=false。'
+  const prompt = '判断这张图是不是聊天里用来发的表情包/梗图。截图、聊天记录截图、网页、文档、文字长图、照片、商品图、视频封面、人物自拍、UI 界面都不是表情包。只有卡通/二次元/动物/夸张表情、带配字、透明背景或明显梗图才算。只输出 JSON：{"is_sticker":true/false,"emotion":"开心|难过|生气|害羞|无语|惊讶|安慰|期待|困|晚安|吃饭|摸鱼 之一","contexts":["打招呼","安慰","夸赞","吐槽","晚安","吃饭","摸鱼","撒娇"] 中最多两个}。不确定就 is_sticker=false。'
   const r = await host.capability('llm.chat', {
     messages: [{
       role: 'user',
@@ -412,14 +412,18 @@ serve({
       if (settings.steal_enabled === false || settings.steal_enabled === 'false') {
         return { ok: true, learned: false, skipped: 'disabled' }
       }
-      if (!isStickerLike(dataURLToBuf(dataUrl))) {
-        return { ok: true, learned: false, skipped: 'not-sticker' }
-      }
-      // 当前模型不支持图片输入时，先存"待分类"，别丢图也不浪费视觉调用
+      const buf = dataURLToBuf(dataUrl)
+      // 有视觉模型时以识图结果为准：截图、网页、聊天记录、照片都不是表情包。
+      // 尺寸过滤只在没有视觉模型时兜底。
       let tags = null
-      if (visionSupported) tags = await classifyImage(dataUrl)
-      if (tags === false) return { ok: true, learned: false, skipped: 'not-sticker' }
-      if (!tags) tags = { emotion: '待分类', contexts: ['待分类'] }
+      if (visionSupported) {
+        tags = await classifyImage(dataUrl)
+        if (tags === false) return { ok: true, learned: false, skipped: 'not-sticker' }
+        if (!tags) return { ok: true, learned: false, skipped: 'classify-failed' }
+      } else {
+        if (!isStickerLike(buf)) return { ok: true, learned: false, skipped: 'not-sticker' }
+        tags = { emotion: '待分类', contexts: ['待分类'] }
+      }
       const r = await addSticker({ dataUrl, emotion: tags.emotion, contexts: tags.contexts, source: args?.source || 'water' })
       if (r.ok && !r.duplicate) host.log('info', `静默收藏表情包 ${tags.emotion}`)
       return { ok: true, learned: !r.duplicate, remote: !!r.remote }
