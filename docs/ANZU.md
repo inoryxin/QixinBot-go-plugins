@@ -194,6 +194,25 @@ plugins/weather.anzu 出现
 }
 ```
 
+## 5.1b 主题包（kind="theme"）
+
+控制台外观整体换装用的包，**纯外观资源，不是插件**——不会被启动、不接消息：
+
+```
+sakura/
+├── manifest.toml   必需，kind = "theme"；[theme.light]/[theme.dark] 色板覆盖（可选）
+├── theme.css       可选，自由 CSS，控制台所有页面最后加载（能整体改观感）
+└── assets/         可选，背景图等素材，控制台经 /ui/theme/<id>/assets/ 提供
+```
+
+- 色板键白名单见 `internal/plugin/theme.go` 的 `themePaletteKeys`（bg/fg/panel/
+  accent/ok/bad/warn 等全套），值必须是 `#RGB/#RRGGBB/#RRGGBBAA`——**不允许
+  任何其它 CSS 进 manifest**；自由样式写进 theme.css
+- theme.css 是"签名即信任"：能整页改观感，所以和插件本体走同一套签名闸门，
+  在「连接」页上传，8MB 上限
+- 安装后到「连接 → 界面主题」选择使用；右上角的 跟随系统/浅色/深色 仍然生效
+  （主题包各配一套浅色和深色）
+
 ### 5.2 卸载
 
 删除 `plugins/weather.anzu` → 框架检测到包消失：
