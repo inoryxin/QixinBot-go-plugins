@@ -1,0 +1,122 @@
+/* ============================================
+   🌸 樱花庭园 —— QixinBot 控制台主题
+   毛玻璃卡片 + 花瓣飘落 + 粉彩配色
+   色板变量见 manifest.toml；本文件负责"气质"：
+   圆角、玻璃、阴影、花瓣动画。
+   ============================================ */
+
+/* ---- 玻璃拟态基座 ---- */
+body {
+  background:
+    radial-gradient(1100px 560px at 88% -8%, rgba(255, 158, 199, 0.28), transparent 60%),
+    radial-gradient(900px 520px at -8% 108%, rgba(255, 183, 213, 0.30), transparent 62%),
+    var(--bg) !important;
+  min-height: 100vh;
+}
+
+.nav,
+.card,
+table,
+.form-box,
+.login-box,
+.chat-side,
+.chat-main,
+details.hg {
+  background: rgba(255, 253, 254, 0.72) !important;
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(231, 84, 128, 0.22) !important;
+  border-radius: 16px !important;
+  box-shadow: 0 4px 20px rgba(255, 150, 180, 0.15) !important;
+}
+
+.nav {
+  border-radius: 0 0 16px 16px !important;
+}
+
+button {
+  border-radius: 8px !important;
+}
+
+button.primary {
+  box-shadow: 0 3px 12px rgba(231, 84, 128, 0.30);
+}
+
+.card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 26px rgba(255, 150, 180, 0.24) !important;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+/* ---- 深色（夜樱）：玻璃换深底，花影压暗 ---- */
+:root[data-theme=dark] body,
+:root[data-theme=dark] .nav,
+:root[data-theme=dark] .card,
+:root[data-theme=dark] table,
+:root[data-theme=dark] .form-box,
+:root[data-theme=dark] .login-box,
+:root[data-theme=dark] .chat-side,
+:root[data-theme=dark] .chat-main,
+:root[data-theme=dark] details.hg {
+  background: rgba(44, 31, 41, 0.72) !important;
+  border-color: rgba(255, 127, 168, 0.25) !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35) !important;
+}
+:root[data-theme=dark] body {
+  background:
+    radial-gradient(1100px 560px at 88% -8%, rgba(255, 127, 168, 0.16), transparent 60%),
+    radial-gradient(900px 520px at -8% 108%, rgba(124, 157, 255, 0.10), transparent 62%),
+    var(--bg) !important;
+}
+
+/* ---- 花瓣飘落（纯 CSS：两层字形雨，速度/透明度不同做视差） ---- */
+body::before,
+body::after {
+  content: "❀　✿　　❀　✧　❀　　✿　❀　　✧　❀　✿　　❀　　✿　❀　✧　　❀";
+  position: fixed;
+  top: -40vh;
+  left: 0;
+  right: 0;
+  pointer-events: none;
+  font-size: 15px;
+  line-height: 34vh;
+  color: rgba(231, 84, 128, 0.35);
+  text-shadow: 0 0 6px rgba(255, 183, 213, 0.35);
+  z-index: 0;
+  animation: sakura-fall 26s linear infinite;
+}
+body::after {
+  content: "✿　　❀　✧　　❀　❀　　✿　　❀　✧　❀　　✿　　❀　✿　　✧　❀　　✿";
+  font-size: 11px;
+  color: rgba(255, 143, 179, 0.28);
+  animation-duration: 38s;
+  animation-delay: -14s;
+}
+@keyframes sakura-fall {
+  from { transform: translateY(-20vh) rotate(0deg); }
+  to   { transform: translateY(130vh) rotate(300deg); }
+}
+
+/* 页面内容压在花瓣层上面 */
+.nav,
+.wrap {
+  position: relative;
+  z-index: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body::before,
+  body::after {
+    animation: none;
+    opacity: 0.5;
+  }
+}
+
+/* ---- 深色花瓣压暗 ---- */
+:root[data-theme=dark] body::before {
+  color: rgba(255, 127, 168, 0.22);
+  text-shadow: 0 0 6px rgba(255, 127, 168, 0.20);
+}
+:root[data-theme=dark] body::after {
+  color: rgba(255, 158, 199, 0.16);
+}
