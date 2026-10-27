@@ -63,6 +63,19 @@ async function ensureSchema() {
   // 按会话查
   await db('exec', `CREATE INDEX IF NOT EXISTS idx_msg_chat ON ai_message(chat_type, chat_id, id)`)
 
+  // 贴吧鱼模式的独立记忆：开模式时的对话只进这张表
+  await db('exec', `
+    CREATE TABLE IF NOT EXISTS ai_tieba_message (
+      id        INTEGER PRIMARY KEY AUTOINCREMENT,
+      chat_type TEXT    NOT NULL,
+      chat_id   INTEGER NOT NULL,
+      user_id   INTEGER NOT NULL,
+      role      TEXT    NOT NULL,
+      content   TEXT    NOT NULL,
+      ts        INTEGER NOT NULL
+    )`)
+  await db('exec', `CREATE INDEX IF NOT EXISTS idx_tmsg_chat ON ai_tieba_message(chat_type, chat_id, id)`)
+
   // 记住每个人的最新昵称：换群改名也能对上号
   await db('exec', `
     CREATE TABLE IF NOT EXISTS ai_user (
@@ -112,8 +125,76 @@ function now() {
   return Math.floor(Date.now() / 1000)
 }
 
-async function remember(session, role, content) {
+/** 当前会话是不是开着贴吧鱼模式（ai-persona 提供 persona.mode；没装就当没开）。 */
+async function inTiebaMode(session) {
+  try {
+    const r = await host.capability('persona.mode', {
+      chat_type: session.chat_type,
+      chat_id: session.chat_id,
+    })
+    return Boolean(r?.ok && r.data?.tieba)
+  } catch {
+    return false
+  }
+}
+
+/** 主人 QQ：框架注入的 QIXIN_OWNER（权限页「主人 QQ」），逗号分隔。 */
+function ownerUsers() {
+  return String(process.env.QIXIN_OWNER || '')
+    .split(',')
+    .map((x) => Number(String(x).trim()))
+    .filter((n) => Number.isFinite(n) && n > 0)
+}
+
+function isOwnerQQ(userID) {
+  const id = Number(userID)
+  return Boolean(id) && ownerUsers().includes(id)
+}
+
+/** 清掉模型自我审查的旁白：括号说明、"内容已清理"、道歉声明之类。 */
+function stripMeta(text) {
+  const META = /(内容已(经)?清理|已经清理干净|只保留|没必要把|作为(一个)?(AI|人工智能|语言模型)|请注意文明|文明用语|我不(能|会|便)|抱歉|不好意思|敏感|审核|过滤|净化|删(掉|除))/
+  const lines = String(text || '').split(/\r?\n/)
+  const out = []
+  for (const raw of lines) {
+    let line = raw.trim()
+    if (!line) continue
+    // 整行就是一个括号旁白
+    if (/^[（(][^）)]*[）)]$/.test(line)) continue
+    // 行内含自我审查说明
+    if (META.test(line)) {
+      line = line.replace(/[（(][^）)]*[）)]/g, '').trim()
+      if (!line || META.test(line)) continue
+    }
+    // 行内括号旁白（"骂一句（这里不能写…）"）
+    line = line.replace(/[（(][^）)]{0,60}[）)]/g, '').trim()
+    if (line) out.push(line)
+  }
+  let res = out.join('\n').trim()
+  if (res && res.replace(/\s/g, '').length < 4) res = ''
+  return res
+}
+
+async function remember(session, role, content, opts = {}) {
   const uid = role === 'user' ? session.user_id : session.self_id || 0
+  // 贴吧鱼模式：写独立表，不碰 ai_message（切回正常不串味）；主人 / 非贴吧走正常记忆
+  if (!opts.normal && await inTiebaMode(session)) {
+    await db('exec',
+      `INSERT INTO ai_tieba_message (chat_type, chat_id, user_id, role, content, ts)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [session.chat_type, session.chat_id, uid, role, content, now()],
+    )
+    // 按 QQ 记昵称，否则上下文里全是数字，模型会认错人
+    if (role === 'user' && session.user_id) {
+      await db('exec',
+        `INSERT INTO ai_user (user_id, nickname, last_seen) VALUES (?, ?, ?)
+         ON CONFLICT(user_id) DO UPDATE SET nickname = excluded.nickname, last_seen = excluded.last_seen`,
+        [session.user_id, session.nickname || '', now()],
+      )
+    }
+    host.log('debug', `贴吧鱼模式：写入独立记忆（${role}）`)
+    return
+  }
   await db('exec',
     `INSERT INTO ai_message (chat_type, chat_id, user_id, role, content, ts)
      VALUES (?, ?, ?, ?, ?, ?)`,
@@ -169,10 +250,11 @@ async function personalHistory(userID, limit, exclude = {}) {
   return (r.rows || []).reverse()
 }
 
-// 群上下文：这个会话最近的消息（所有人）
-async function chatHistory(chatType, chatID, limit) {
+// 群上下文：这个会话最近的消息（所有人）。tieba=true 时读贴吧模式的独立记忆
+async function chatHistory(chatType, chatID, limit, tieba = false) {
+  const table = tieba ? 'ai_tieba_message' : 'ai_message'
   const r = await db('all',
-    `SELECT user_id, role, content FROM ai_message
+    `SELECT user_id, role, content FROM ${table}
      WHERE chat_type = ? AND chat_id = ?
      ORDER BY id DESC LIMIT ?`,
     [chatType, chatID, limit],
@@ -841,7 +923,7 @@ async function toDataURL(url) {
 
 // ---------------------------------------------------------------- 组装 prompt
 
-async function buildMessages(session, userText, extraPrompt, images) {
+async function buildMessages(session, userText, extraPrompt, images, opts = {}) {
   // 系统提示词由 ai-persona 插件统一提供（人设、自称、风格都在那边）。
   // 拿不到（没装/挂了）就用一句兜底，别让对话整个失败。
   let personaLine = ''
@@ -850,6 +932,7 @@ async function buildMessages(session, userText, extraPrompt, images) {
     const pr = await host.capability('persona.render', {
       chat_type: session.chat_type,
       chat_id: session.chat_id,
+      no_tieba: Boolean(opts.noTieba),
     })
     if (pr?.ok && pr.data?.system) {
       personaLine = pr.data.system
@@ -869,8 +952,12 @@ async function buildMessages(session, userText, extraPrompt, images) {
   }
   const parts = [personaLine]
 
-  // 好感度：影响语气
-  if (session.user_id) {
+  // 贴吧模式：主人说话时 noTieba=true，用正常人设
+  const tiebaOn = !opts.noTieba && (personaFromPlugin ? await inTiebaMode(session) : false)
+  host.log('debug', `prompt tieba=${tiebaOn} personaFromPlugin=${personaFromPlugin} len=${personaLine.length}`)
+
+  // 好感度：影响语气（贴吧模式下不注入——"对主人别真生气"会把嘴臭按回去）
+  if (session.user_id && !tiebaOn) {
     const aff = await affinityOf(session.user_id)
     if (aff) {
       const score = typeof aff.score === 'number' ? aff.score : aff.affinity
@@ -939,7 +1026,7 @@ async function buildMessages(session, userText, extraPrompt, images) {
   // 她的生活：让回复带上"此刻在干嘛"（装了就生效，没装不影响）
   const life = await optionalCapability('life.now')
   host.log('debug', 'buildMessages life=' + (life?.text || '无'))
-  if (life && life.text) {
+  if (life && life.text && !tiebaOn) {
     parts.push(`你此刻的状态：${life.text}。回复必须符合这个状态——在忙就短一点，睡着被叫醒就迷糊一点。`)
   }
 
@@ -955,7 +1042,11 @@ async function buildMessages(session, userText, extraPrompt, images) {
     }
   }
 
-  parts.push('回复要短，一般一两句。不要用 Markdown 列表和标题。')
+  if (tiebaOn) {
+    parts.push('每轮回复总字数不少于 30 字（分几条都算总字数），别只回一两个字或一个问号；不加括号旁白，不用 Markdown。')
+  } else {
+    parts.push('回复要短，一般一两句。不要用 Markdown 列表和标题。')
+  }
 
   const messages = [{ role: 'system', content: parts.join('\n') }]
 
@@ -981,7 +1072,7 @@ async function buildMessages(session, userText, extraPrompt, images) {
   // ② 群上下文：最近这段对话
   // 群里只带最近 N 条（默认 20）：带整段历史既费 token 又容易跑题
   const ctxSize = Math.max(4, Math.min(50, Number(settings.context_size) || 20))
-  const history = await chatHistory(session.chat_type, session.chat_id, ctxSize)
+  const history = await chatHistory(session.chat_type, session.chat_id, ctxSize, tiebaOn)
   const names = await nicknamesOf(history.map((m) => m.user_id))
 
   for (const m of history) {
@@ -1004,6 +1095,13 @@ async function buildMessages(session, userText, extraPrompt, images) {
   // 当前这句：有图就用多模态格式
   if (userText || (images && images.length)) {
     const who = session.nickname || String(session.user_id)
+    // 贴吧模式必须分人：明确告诉模型这次是谁在说话
+    if (tiebaOn) {
+      messages.push({
+        role: 'system',
+        content: `这条消息是「${who}」说的（QQ ${session.user_id}）。只回${who}，不要提到、也不要攻击这次没说话的人。`,
+      })
+    }
     const last = history[history.length - 1]
     // 空文本不能拿来判重（图片消息 text 就是空的），否则整块被跳过、图片也丢了
     const duplicate = !!userText && last && last.content === userText
@@ -1035,13 +1133,25 @@ async function buildMessages(session, userText, extraPrompt, images) {
 async function askLLM(messages, tools) {
   const args = { messages }
   if (tools && tools.length) args.tools = tools
-  const r = await host.capability('llm.chat', args)
-  if (!r?.ok) return { ok: false, error: r?.error || 'LLM 调用失败' }
-  return {
-    ok: true,
-    text: String(r.data?.text || '').trim(),
-    toolCalls: Array.isArray(r.data?.tool_calls) ? r.data.tool_calls : [],
+  // deepseek-flash 偶尔只返回 reasoning：重试一次，别把空回复发出去
+  let lastError = 'LLM 调用失败'
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const r = await host.capability('llm.chat', args)
+    if (!r?.ok) {
+      lastError = r?.error || 'LLM 调用失败'
+      if (attempt === 0 && /content|空/.test(String(lastError))) continue
+      return { ok: false, error: lastError }
+    }
+    const text = String(r.data?.text || '').trim()
+    const toolCalls = Array.isArray(r.data?.tool_calls) ? r.data.tool_calls : []
+    if (!text && !toolCalls.length) {
+      lastError = 'LLM 返回空内容'
+      if (attempt === 0) continue
+      return { ok: false, error: lastError }
+    }
+    return { ok: true, text, toolCalls }
   }
+  return { ok: false, error: lastError }
 }
 
 // 把宿主声明的工具转成 OpenAI 的 function 格式
@@ -1331,10 +1441,11 @@ function targetParts() {
   return 1
 }
 
-async function sendSplit(chat, text) {
+async function sendSplit(chat, text, opts = {}) {
+  const tieba = Boolean(opts.tieba)
   // 语音模式：概率由「发语音」插件（ai-voice）的 chat_pct 决定
-  // 它说"跳过"就回退文字，这样两个插件的概率只用一处配置
-  {
+  // 贴吧模式是纯文字战斗：不配音、不发表情包、不发图
+  if (!tieba) {
     try {
       const r = await host.capability('voice.say', {
         text,
@@ -1365,7 +1476,9 @@ async function sendSplit(chat, text) {
     }
     await host.reply(chat, parts[i])
   }
-  try { await maybeSendSticker(chat, text) } catch (e) { host.log('debug', '表情包跳过: ' + e.message) }
+  if (!tieba) {
+    try { await maybeSendSticker(chat, text) } catch (e) { host.log('debug', '表情包跳过: ' + e.message) }
+  }
   return parts.length
 }
 
@@ -1402,11 +1515,11 @@ async function maybeSendSticker(chat, text) {
   host.log('info', `表情包已发送 ${emotion}`)
 }
 
-async function respond(session, userText, extraPrompt, images) {
+async function respond(session, userText, extraPrompt, images, opts = {}) {
   const t0 = Date.now()
   host.log('info', `respond 开始 images=${(images || []).length}`)
 
-  const messages = await buildMessages(session, userText, extraPrompt, images)
+  const messages = await buildMessages(session, userText, extraPrompt, images, opts)
   host.log('info', `respond 上下文就绪 msgs=${messages.length} 耗时=${Date.now() - t0}`)
 
   const tools = await loadToolDefs(session, userText)
@@ -1461,12 +1574,31 @@ async function respond(session, userText, extraPrompt, images) {
     }
   }
 
+  // 贴吧模式：清旁白 + 字数不足补说 + 纯文字发送
+  const tiebaMode = !opts.noTieba && await inTiebaMode(session)
+  if (tiebaMode) {
+    text = stripMeta(text).replace(/喵+(?=[\s。！？!?~～，,]|$)/g, '').trim()
+    if (!text) text = '滚'
+    const count = (s) => String(s || '').replace(/\s/g, '').length
+    if (count(text) < 30) {
+      host.log('info', `贴吧模式字数不足（${count(text)}），补一轮`)
+      messages.push({ role: 'assistant', content: text })
+      messages.push({ role: 'system', content: '刚才被过滤/太短了。重新说，只输出骂人的话，不加括号旁白，至少 30 字。' })
+      const r2 = await askLLM(messages, [])
+      if (r2.ok && r2.text) {
+        const t2 = stripMeta(r2.text).replace(/喵+(?=[\s。！？!?~～，,]|$)/g, '').trim()
+        if (count(t2) > count(text)) text = t2
+      }
+    }
+  }
+
   const delay = Math.max(0, Number(settings.reply_typing) || 0)
   if (delay > 0) await new Promise((res) => setTimeout(res, Math.min(delay, 3000)))
 
   try {
-    const n = await sendSplit(chatOf(session), text)
+    const n = await sendSplit(chatOf(session), text, { tieba: tiebaMode })
     for (const img of toolImages) {
+      if (tiebaMode) break // 贴吧模式不发图
       const file = /^https?:\/\//.test(img) ? img : `base64://${img}`
       await host.sendMessage(chatOf(session), [{ type: 'image', data: { file } }])
     }
@@ -1475,7 +1607,7 @@ async function respond(session, userText, extraPrompt, images) {
     host.log('error', '发送失败: ' + err.message)
     return { ok: false, error: err.message }
   }
-  await remember(session, 'assistant', text)
+  await remember(session, 'assistant', text, { normal: Boolean(opts.noTieba) })
   return { ok: true, text }
 }
 
@@ -1548,8 +1680,11 @@ serve({
 
     // 纯图片群消息：不水群、不回复，但可以按偷图概率静默收藏
     // 有些协议端会把纯图消息的 text 填成 "[图片]" / "[动画表情]"，不能只看 text 是否为空
-    const trig = shouldTrigger(session)
-    host.log('info', 'H4 shouldTrigger=' + trig)
+    const tiebaOn = await inTiebaMode(session)
+    const owner = isOwnerQQ(session.user_id)
+    const battle = tiebaOn && !owner
+    const trig = battle ? Math.random() * 100 < 80 : (owner && tiebaOn ? true : shouldTrigger(session))
+    host.log('info', `H4 shouldTrigger=${trig} tieba=${tiebaOn} owner=${owner}`)
     if (!trig) return { handled: false }
 
     const cleaned = text.replace(/^@\S+\s*/, '').trim() || text
@@ -1565,7 +1700,7 @@ serve({
     host.log('info', 'H5 进入 respond images=' + images.length)
 
     try {
-      await respond(session, cleaned, null, images)
+      await respond(session, cleaned, null, images, { noTieba: tiebaOn && owner })
       host.log('info', 'H6 respond 返回')
     } catch (err) {
       host.log('error', '回复失败: ' + err.message)
@@ -1607,7 +1742,7 @@ serve({
       }
       if (!content) return {}
 
-      await remember(session, 'user', content)
+      await remember(session, 'user', content, { normal: isOwnerQQ(session.user_id) })
       return {}
     } catch (e) {
       host.log('debug', 'observe 记录失败: ' + e.message)
