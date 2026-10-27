@@ -42,6 +42,27 @@ my-plugin/
 
 ## 0.1 开发流程：一条命令跑起来
 
+### 0.1.0 开发环境准备（前置条件）
+
+| 需要 | 说明 |
+|---|---|
+| **QixinBot 发行包** | 从 [QixinBot-release](http://10.0.0.140:30008/anzu/QixinBot-release) 下载解压——`bin/qixinpack.exe` 和 `bin/mock-onebot.exe` 是开发工具，`dev` 会自动找到它们 |
+| **Node.js ≥ 18**（写 Node 插件） | 装系统 Node，**或**下载官方运行时包用 `-runtime` 挂载（推荐，见下文，和线上完全一致） |
+| **Python 3.12**（写 Python 插件） | 同上 |
+| **不用装 Go** | 插件开发完全不碰 Go——qixinpack 是编译好的成品。只有改框架本体才需要 |
+| **不用连真 QQ** | mock-onebot 假协议端由 `dev` 自动拉起，虚拟群里测，随时注入消息 |
+
+目录随便放：插件源码可以建在任何地方（`qixinpack new` 生成在哪就在哪开发），
+发行包解压在哪都行——只要 `qixinpack` 和 `mock-onebot` 在同一个 `bin/` 里。
+唯一建议：**插件源码别放进发行包目录**，打包用 `pack -out` 指到发行包的 `plugins/`。
+
+自检一行：
+
+```powershell
+.in\qixinpack.exe new demo -name 自检; cd demo; ..in\qixinpack.exe dev .
+# 浏览器打开 http://127.0.0.1:7801（admin/dev），虚拟群发 /hello 有回音 = 环境就绪
+```
+
 ### 三步
 
 ```powershell
