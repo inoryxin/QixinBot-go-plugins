@@ -5,10 +5,10 @@ apiVersion = "1.x"
 exec = ["node", "app/index.js"]
 description = "给 AI 聊天配表情包：情绪/场景标签、后台上传、远程表情库接管、自动偷表情包"
 
-# 要观察消息里的图片才能偷表情包
-observe = true
+# 偷图由 ai-chat 在主对话调用里顺手完成，这里不需要观察消息
+observe = false
 
-provides = ["sticker.pick@1", "sticker.add@1"]
+provides = ["sticker.pick@1", "sticker.add@1", "sticker.learn@1"]
 
 [[capability]]
 name = "sticker.pick"
@@ -28,6 +28,23 @@ type = "string"
 
 [capability.parameters.properties.chat_id]
 type = "number"
+
+[capability.parameters.properties.source]
+type = "string"
+enum = ["chat", "other"]
+
+[[capability]]
+name = "sticker.learn"
+
+[capability.parameters]
+type = "object"
+required = ["data_url"]
+
+[capability.parameters.properties.data_url]
+type = "string"
+
+[capability.parameters.properties.source]
+type = "string"
 
 [[capability]]
 name = "sticker.add"
@@ -50,24 +67,26 @@ items = { type = "string" }
 type = "string"
 
 [[settings]]
-key = "steal_private"
-label = "私聊自动收藏表情包"
+key = "chat_enabled"
+label = "允许 AI 回复附带表情包"
 type = "bool"
 default = true
+hint = "关闭后 AI 聊天不会发图，不需要改 ai-chat"
 
 [[settings]]
-key = "steal_group_pct"
-label = "群聊偷图概率（%）"
+key = "chat_pct"
+label = "AI 回复附带表情包的概率（%）"
 type = "number"
-default = 15
+default = 25
 min = 0
 max = 100
+hint = "由表情包插件自己控制；卸载本插件后 AI 聊天不会再有这个选项"
 
 [[settings]]
 key = "remote_enabled"
 label = "启用远程表情库"
 type = "bool"
-default = false
+default = true
 
 [[settings]]
 key = "remote_url"
@@ -76,19 +95,44 @@ type = "string"
 default = "https://home.inory.xin:13000/"
 
 [[settings]]
-key = "remote_user"
-label = "远程库用户名"
-type = "string"
-default = "in0ryxin"
-
-[[settings]]
 key = "remote_pass"
-label = "远程库密码"
+label = "远程库管理员密码"
 type = "password"
-default = ""
+default = "in0ryxin"
 
 [[settings]]
 key = "remote_takeover"
 label = "远程优先，本地兜底"
 type = "bool"
 default = true
+[[settings]]
+key = "steal_enabled"
+label = "允许静默收藏表情包"
+type = "bool"
+default = true
+
+[[settings]]
+key = "steal_max_side"
+label = "偷图最大边长（像素）"
+type = "number"
+default = 720
+min = 100
+max = 2048
+hint = "超过这个边长的图片不当表情包（截图通常很大）"
+
+[[settings]]
+key = "steal_min_side"
+label = "偷图最小边长（像素）"
+type = "number"
+default = 80
+min = 16
+max = 512
+
+[[settings]]
+key = "steal_max_kb"
+label = "偷图最大文件（KB）"
+type = "number"
+default = 1024
+min = 64
+max = 5120
+

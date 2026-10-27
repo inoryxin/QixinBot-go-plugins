@@ -6,29 +6,26 @@
 - AI 回复按概率挑一张合适的图（`ai-chat` 的 `sticker_pct`，默认 25%）
 - 后台 `/plugin/ai-sticker/` 上传、打标签、删除
 - 可接远程表情库（远程优先，失败回退本地）
-- 自动偷表情包：私聊每张图都识别，群聊按概率；识别为表情包后打标签入库
+- 自动偷表情包：**复用 ai-chat 主对话那一次 LLM 调用**——图片本来就发给模型了，让它在回复末尾顺手带一行标签，不再单独调视觉模型
 
-## 远程库协议
+## 远程库
 
-配置 `remote_url`（默认 `https://home.inory.xin:13000`）、`remote_user`、`remote_pass`，使用 HTTP Basic Auth。
-
-约定接口（可自行适配服务端）：
+默认接 `https://home.inory.xin:13000`（祈歆表情包），密码登录：
 
 ```
-GET  /api/stickers/pick?emotion=开心&context=打招呼
-     -> {"ok":true,"sticker":{"data_url":"..."}}  或 {"url":"https://..."}
-
-POST /api/stickers
-     {"data_url":"data:image/png;base64,...","emotion":"开心","contexts":["打招呼"],"source":"steal"}
-     -> 2xx 表示入库成功
+POST /api/login   {"password":"..."}        -> Set-Cookie
+GET  /api/state                              -> {images:[{url,emotion,usage,tags,...}]}
+POST /api/upload  {"files":[{data,category,tags,emotion,usage}]}
 ```
+
+情绪映射：中文标签 ↔ 远程的 happy/sad/angry/shy/confused/tired/love。
 
 远程开启且 `remote_takeover=true` 时：取图先走远程；收藏/上传优先远程，远程失败才存本地。
 
 ## 偷图
 
-- 私聊：每张图片都交给视觉模型判断，是表情包就收藏
-- 群聊：按 `steal_group_pct` 概率抽样
+- 私聊：每条消息 AI 都会看图，主调用顺手返回标签，是表情包就收藏
+- 群聊：不单独掷骰子；只有 ai-chat 决定"水群"这条消息时，主调用带的标签才会入库
 - 判断提示词要求模型输出 `is_sticker/emotion/contexts`；不是表情包就丢弃
 - 同一张图按 SHA1 去重
 
@@ -36,8 +33,17 @@ POST /api/stickers
 
 | key | 说明 |
 |---|---|
-| steal_private | 私聊自动收藏 |
-| steal_group_pct | 群聊偷图概率 |
 | remote_enabled | 启用远程库 |
-| remote_url / remote_user / remote_pass | 远程库连接 |
+| remote_url / remote_pass | 远程库地址与管理员密码 |
 | remote_takeover | 远程优先、本地兜底 |
+## 偷图过滤
+
+只收藏像表情包的图片：
+
+- 最大边长 ≤ `steal_max_side`（默认 720，截图通常更大）
+- 最小边长 ≥ 80
+- 文件 ≤ `steal_max_kb`（默认 1024KB）
+- 宽高比 0.45～2.2
+- 有视觉模型时还要 `is_sticker=true`
+
+尺寸/体积/比例不像表情包的截图不会进本地库，也不会走视觉分类。
