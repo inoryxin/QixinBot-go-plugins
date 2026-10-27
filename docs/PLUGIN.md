@@ -2563,6 +2563,27 @@ Copy-Item data\qixin.db* backup\
 
 **插件侧**：如果你要处理这些消息，读 `session.segments`（原始段数组），别指望 `session.text`。
 
+### 引用/回复上下文
+
+群里"回复某条消息再说话"是 AI 插件最常见的输入形态，session 里有现成的：
+
+```js
+async handle_message({ session }) {
+  if (session.reply_id) {
+    // reply 是宿主调 get_msg 换回的被引用内容；拿不到时字段整个省略（消息已撤销/协议端不支持）
+    const who = session.reply?.nickname || session.reply?.user_id || '某人'
+    console.log(`他在回复 ${who} 的：${session.reply?.text || '(拿不到原文)'}`)
+  }
+  // 只拿到 ID、内容自己回查也行：
+  // await host.callOnebot('get_msg', { message_id: session.reply_id })
+}
+```
+
+- `session.reply_id`：被引用消息的 ID，只要 reply 段带了 id 就能解析（协议端无关）
+- `session.reply`：`{user_id, nickname, text, segments}`，拿不到时**字段整个省略**（undefined，不是 null）。
+  `text` 是被引用消息里的纯文本拼接（纯图/表情的引用没有 text 字段）；图/表情等原始段在 `segments` 里
+- 完整字段说明见 `API.md §4.1`
+
 ## 6.15 单次消息追踪
 
 虚拟群里每条回复下面有个可以展开的「追踪」：

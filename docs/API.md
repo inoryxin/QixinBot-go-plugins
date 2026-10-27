@@ -479,6 +479,14 @@ notification，无 id，无返回。宿主自动加 `plugin=<id>`。
 | `mentioned` | bool | 是否 @ 了机器人 |
 | `segments` | Segment[] | OneBot 原始消息段 |
 | `ts` | int64 | Unix 秒 |
+| `reply_id` | int64 | 被引用消息的 ID（消息带 reply 段且段里带 id 时才有，否则省略） |
+| `reply` | object | 引用内容 `{user_id, nickname, text, segments}`；宿主用 get_msg 尽力解析，拿不到时**字段整个省略**（JS 里是 undefined，不是 null） |
+
+**引用/回复**：用户在群里回复某条消息再说话时，`reply_id` 通常可解析
+（reply 段没带 id 的极少数实现除外），`reply` 是宿主自动调 `get_msg`
+换回的被引用内容（AI 插件直接读 `session.reply?.text` 就知道
+"他在回复哪句话"）。拿不到时（协议端不支持 get_msg、消息已撤销、
+返回内容为空）字段整个省略——判断用 `if (session.reply)` 即可。
 
 ### 4.2 Segment
 
