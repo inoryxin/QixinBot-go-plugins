@@ -2151,7 +2151,7 @@ process.env.QIXIN_PLUGIN_ID   // 插件 id
 process.env.QIXIN_PLUGIN_DIR  // 运行区根目录
 process.env.QIXIN_DATA_DIR    // 持久数据目录
 process.env.QIXIN_ASSETS_DIR  // 素材目录
-process.env.QIXIN_EXPERIMENTAL // 开发线为 1；发行版没有这个变量
+process.env.QIXIN_EXPERIMENTAL // 开发线为 1（[[schedule]] 由框架接管，别再自起 setInterval）；发行版没有
 ```
 
 依赖目录也会自动注入：
@@ -2271,8 +2271,9 @@ env = { MY_API = "xxx" }
 ## 6.11 用 Python 写插件
 
 **Python SDK 和 Node SDK 接口对齐**（`sdk/python/qixin.py`，18 个方法）：
-注意框架只自动复制 **Node** SDK 到插件的 `_sdk/`——Python 插件要把
-`qixin.py` 放进自己的包里（`app/` 旁边即可）随包分发。
+`qixinpack pack` 会自动把两个 SDK 注入包里的 `_sdk/`（源码不用带，
+重打一次旧包即可获得新 SDK）；框架运行时只在 `_sdk` 缺失时才复制自己的副本。
+源码里带了 `_sdk/` 的话以包里的为准。
 
 | 能力 | Python | Node |
 |---|---|---|
@@ -2657,7 +2658,7 @@ async handle_message({ session }) {
 |---|---|
 | 超时怎么办？ | 返回空字符串，`if (!name)` 就能处理 |
 | 别人插话会怎样？ | 只认 `user_id` 匹配的那个人，其它消息正常分发 |
-| 多账号会串吗？ | **不支持多账号**（框架单账号设计），键里没有 account |
+| 多账号会串吗？ | 不串。等待键是 账号+会话+用户，同一群号在两个账号下是两个独立等待 |
 | 等的时候能收到别的命令吗？ | 那个人发别的也算"回答"（简单粗暴，但可预期） |
 | 能等几轮？ | 想等几轮就调几次 `host.ask` |
 | 超时上限？ | 别超过 5 分钟——它会阻塞这个插件的 `handle_message` |

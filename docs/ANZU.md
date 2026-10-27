@@ -26,6 +26,7 @@
 weather.anzu
 ├── manifest.toml            必需，清单位于根目录
 ├── app/                     必需，插件本体
+├── _sdk/                    qixinpack pack 自动注入（源码不用带）
 │   └── index.js             入口（由 exec 指定）
 ├── deps/                    可选，依赖
 │   └── node_modules/        原样拷进运行区
