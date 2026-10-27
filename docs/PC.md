@@ -3,7 +3,7 @@
 把原来的 `pc-status`（状态/截图）和 `dsh-mode`（唤醒 DSH、接管 QQ）合并成：
 
 ```
-PC 上一个程序：tools/pc-agent/pc-agent.exe（Go）
+PC 上一个程序：C:\Users\anzu\.dsh\bin\pc-agent.exe（Go）
 框架一个插件：dist/pc
 ```
 
@@ -17,14 +17,15 @@ powershell -ExecutionPolicy Bypass -File tools\pc-agent\install.ps1
 
 它会：
 
-- 写入 `Startup\pc-agent.vbs`，登录自启
-- 如果 agent 退出，5 秒后自动拉起
+- 编译到工作区外的 `C:\Users\anzu\.dsh\bin\pc-agent.exe`（避免 Low IL）
+- 写入 `Startup\PCAgent.lnk`，登录自启
+- 保留/生成 `C:\Users\anzu\.dsh\bin\token.txt`
 - 监听 `0.0.0.0:3097`
 
 token 必须显式提供（`-token` 参数或 `PC_AGENT_TOKEN` 环境变量），
-没有就拒绝启动——源码里不再有默认值。首次安装跑 `install.ps1`
-会随机生成并存到 `token.txt`，把它填进 pc 插件的设置里。
-旧部署如果还在用源码里出现过的 `pc-7f3a91c2`，请换掉。
+没有就拒绝启动——源码里没有默认值。`install.ps1` 首次会随机生成
+`token.txt`；当前部署的 token 是 `pc-7f3a91c2`，`pc` 插件设置里也是它。
+要轮换就改 `token.txt`，同时改插件设置里的 `agentToken`。
 
 ## 进入大肥鱼模式的完整流程
 
@@ -35,10 +36,10 @@ token 必须显式提供（`-token` 参数或 `PC_AGENT_TOKEN` 环境变量）�
 3. 等 Arch 的 `22222` 端口起来（约 1 分钟）
 4. 请求 `http://10.0.0.99:22222/launch?token=111111&app=reboot` 切 Windows
 5. 等 Windows 启动、PC 管家上线
-6. Windows 起来后 Go 管家按人的方式执行：`cd /d D:\deepseek\deepseek-harness` → `pnpm dsh web`（会弹浏览器）
-7. ACP 桥由登录启动项 `dsh-acp-bridge.vbs` 负责；Go 管家只检查 3099，不重复拉起（重复起桥会让 DSH ACP 子进程退出）
+6. Windows 起来后 Go 管家先清理残留 `--profile acp`，再用 `.dsh\dsh-acp-bridge.cmd` 起 ACP 桥（带 `DSH_PROFILE` / `DSH_PROFILE_DIR`）
+7. 再执行 `cd /d D:\deepseek\deepseek-harness` → `pnpm dsh web`（会弹浏览器）
 8. 插件连上 ACP，接管私聊
-9. 如果 Windows 开着但管家被误杀：先看 3389/445，等 VBS 把管家拉回来，不会误走 HA 重启
+9. 如果 Windows 开着但管家被误杀：先看 3389/445，等 PCAgent 快捷方式/任务把管家拉回来，不会误走 HA 重启
 
 配置项：`haUrl`、`haToken`、`haEntity`、`archPort`、`archLaunchUrl`、`bootTimeoutMs`。
 
@@ -49,7 +50,7 @@ GET  /healthz
 GET  /status          CPU/内存/磁盘/电池/DSH 状态
 GET  /screen          当前屏幕 JPEG
 GET  /dsh-url         DSH 带 token 的地址
-POST /ensure-dsh?web=1   按需 pnpm dsh web（3080）；ACP 桥由登录启动项负责
+POST /ensure-dsh?web=1   按需起 ACP 桥（3099）+ pnpm dsh web（3080）
 POST /open?url=...       打开浏览器
 POST /action?action=shutdown|restart|sleep|hibernate|lock|logoff
 POST /shell              token 保护的 PowerShell（插件默认不调用）
@@ -95,6 +96,10 @@ GET  /file?path=...      读取 PC 文件
 
 开关机不在这个插件里做——日常开关机用 `home-assistant` 插件。
 只有 `进入大肥鱼模式` 会在检测到电脑没开时，自动通过 HA 插座通电。
+
+## 相关文档
+
+现场路径、日志、测试命令和已知问题见 [PC-HANDOFF.md](./PC-HANDOFF.md)。
 
 ## 和旧插件的区别
 
