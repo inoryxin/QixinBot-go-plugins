@@ -60,6 +60,10 @@ apiVersion = "1.x"
 # 相对运行区根目录；app/ 下
 exec = ["node", "app/index.js"]
 
+# 可选：进共享运行时宿主（与其它 cohost 插件共用一个 Node 进程，
+# 省内存；只对纯 JS 插件有意义）。需要 config 打开 cohost_enabled
+# cohost = true
+
 # 可选：设置页入口，相对运行区根目录
 web = "web/index.html"
 

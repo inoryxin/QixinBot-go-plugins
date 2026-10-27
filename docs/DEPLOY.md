@@ -419,7 +419,17 @@ sudo journalctl -u qixinbot -f
 
 外部命令同理，见 `PLUGIN.md` §6.8 的查找顺序（设置项 → 环境变量 → PATH）。
 
+## 共享运行时宿主（实验，小内存服务器）
+
+2G 内存的服务器插件多了吃紧时：config 打开 `[plugin] cohost_enabled = true`，
+想让哪个插件进共享池就在它的 manifest.toml 加 `cohost = true`（插件代码零改动）。
+28 插件实测：内存 1.0GB → ~430MB，分发延迟无差异，worker 崩溃自动重启、
+共享宿主死亡亚秒恢复、熔断自动回退独占。详见 COHOST-DESIGN.md。
+
 ## 备份与恢复
+
+备份自动做两件事：WAL 先 checkpoint 进主库（框架在跑也不会拷出撕裂的库）、
+备份产物自身不会被打进包里。
 
 ```powershell
 # 打包整个运行目录（config + plugins/*.anzu + data/）
