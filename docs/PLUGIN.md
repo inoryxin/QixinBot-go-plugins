@@ -6,18 +6,28 @@
 
 ---
 
-## 0. 快速开始
+## 0. 快速开始（从零到群里能用）
+
+> 环境准备（要装什么、**不用装什么**）见 [0.1.0](#010-开发环境准备前置条件)；
+> 第一次写插件，写完对着 [0.3 踩坑清单](#03-第一次写插件踩坑清单) 扫一遍能省大半返工。
 
 ```powershell
-# 1. 生成骨架
-.\bin\qixinpack.exe new my-plugin -name 我的插件 -dir dist
+# 1. 生成骨架（目录随便放；骨架本身就能跑）
+.\bin\qixinpack.exe new my-plugin -name 我的插件
+cd my-plugin
 
-# 2. 改 manifest.toml 和 app/index.js
+# 2. 起本地"假 QQ"环境（不用连真 QQ）
+..\bin\qixinpack.exe dev . -watch
+#    浏览器打开 http://127.0.0.1:7801（admin / dev）
+#    控制台 → 聊天 → 🧪 虚拟群 → 发 /my-plugin hello 有回音 = 环境就绪
 
-# 3. 打包
-.\bin\qixinpack.exe pack dist\my-plugin -out plugins\my-plugin.anzu
+# 3. 改 manifest.toml 和 app/index.js（保存 1 秒内自动重载，虚拟群直接测）
 
-# 4. 热重载会自动装好，去 WebUI「插件」页启用
+# 4. 测好了就打包（Ctrl+C 退出 dev）
+..\bin\qixinpack.exe pack . -out my-plugin.anzu
+
+# 5. 上服务器：把 my-plugin.anzu 放进服务器的 plugins\ 目录
+#    （或 WebUI「插件」页上传）→ 热重载自动安装 → 管理员点「启用」→ 完事
 ```
 
 生成的骨架：
@@ -37,6 +47,8 @@ my-plugin/
 所以定时任务往 `data/` 存进度、写缓存，不会把插件自己重启掉。
 
 **反过来**：别把需要持久的东西塞进 `app/`——那里一改就会重载。
+
+**本地 dev 的完整玩法**（生产运行时、命令自动测试、端到端验证）在下一节。
 
 ---
 
@@ -59,7 +71,7 @@ my-plugin/
 自检一行：
 
 ```powershell
-.in\qixinpack.exe new demo -name 自检; cd demo; ..in\qixinpack.exe dev .
+.\bin\qixinpack.exe new demo -name 自检; cd demo; ..\bin\qixinpack.exe dev .
 # 浏览器打开 http://127.0.0.1:7801（admin/dev），虚拟群发 /hello 有回音 = 环境就绪
 ```
 
@@ -374,6 +386,36 @@ cohost = true
 分组合上限见 `[plugin] cohost_group_size`（默认 6）。组满或共享宿主不可用时
 自动回退独占进程，插件不会因此起不来。
 
+## 0.3 第一次写插件：踩坑清单
+
+这些坑都真实踩过。**发版前逐条对一遍**：
+
+发版前逐条对一遍，能省掉大半返工：
+
+- [ ] **能力参数 schema 写全**：`args` 里用到的每个字段都要在
+      `[capability.parameters.properties.*]` 里声明，否则调用会被拒：
+      `未知参数 "scope"（允许: [action content name]）`
+- [ ] **共享数据先声明**：Node 用 `host.sharedSet`、Python 用 `host.shared_set`，key 必须出现在 `[[shared]]`，
+      且写完整名 `<插件id>.<key>`
+- [ ] **设置项 type 别写错**：`bool`/`boolean` 都行，其它只认
+      `string|text|textarea|bool|boolean|number|select|password|path`；写错会退化成文本框并打 warn
+- [ ] **下拉框给中文**：`options` + `option_labels`
+- [ ] **消息要全量看到就开 `observe`**：`last = true` 的兜底插件收不到
+      被别的插件认领的消息
+- [ ] **定时自己管**：用 `setInterval` / `setTimeout`
+- [ ] **改插件 id 前先备份 `data/`**：设置和存储都在
+      `data/plugins/<id>/data/`；删插件时框架会把它移到
+      `data/removed-plugins/<id>-<时间戳>/data/`，但**重装不会自动恢复**
+- [ ] **改名后检查 `[[requires]]`**：别的插件里写的 value 也要跟着改，
+      否则启动时报"缺少依赖"
+- [ ] **命令 id 全局唯一**：不同插件的命令 id 撞了会报
+      「feature 冲突」，表现是其中一个插件起不来
+- [ ] **命令和内置命令别重名**（`/help`、`/plugins`）
+- [ ] **高频路径别刷日志**：`host.log('debug', ...)` 会进缓冲区
+- [ ] **初始化别覆盖已保存状态**：先 `host.storage.get`，只有不存在时才写默认
+- [ ] **共享数据重启/重载不会丢**：`[[shared]]` 值只有删除插件才清；不要把 per-chat 数据覆盖成全局对象
+- [ ] **定时器/子进程在 shutdown 里清理**：否则重载会留孤儿
+
 ## 1. 一个插件是什么
 
 一个 `.anzu` 包 + 一份 `manifest.toml` + 一组约定。
@@ -445,7 +487,7 @@ deps/
 | `deps/python` | `PYTHONPATH` |
 | `deps/bin` | `PATH` 末尾 |
 
-**所以 Node 和 Python 用同一套目录约定**，只是子目录不同。平台原生依赖不要放这里，见 6.1f。
+**所以 Node 和 Python 用同一套目录约定**，只是子目录不同。平台原生依赖不要放这里，见 6.1e。
 
 ```bash
 # Node（只装纯 JS；--prefix deps 会生成 deps/node_modules）
@@ -1155,34 +1197,6 @@ WebUI 的 `GET /api/capabilities` 能看到每个能力的提供者列表和顺�
 
 ---
 
-## 6.0a 写插件前的检查清单（踩过的坑）
-
-发版前逐条对一遍，能省掉大半返工：
-
-- [ ] **能力参数 schema 写全**：`args` 里用到的每个字段都要在
-      `[capability.parameters.properties.*]` 里声明，否则调用会被拒：
-      `未知参数 "scope"（允许: [action content name]）`
-- [ ] **共享数据先声明**：Node 用 `host.sharedSet`、Python 用 `host.shared_set`，key 必须出现在 `[[shared]]`，
-      且写完整名 `<插件id>.<key>`
-- [ ] **设置项 type 别写错**：`bool`/`boolean` 都行，其它只认
-      `string|text|textarea|bool|boolean|number|select|password|path`；写错会退化成文本框并打 warn
-- [ ] **下拉框给中文**：`options` + `option_labels`
-- [ ] **消息要全量看到就开 `observe`**：`last = true` 的兜底插件收不到
-      被别的插件认领的消息
-- [ ] **定时自己管**：用 `setInterval` / `setTimeout`
-- [ ] **改插件 id 前先备份 `data/`**：设置和存储都在
-      `data/plugins/<id>/data/`；删插件时框架会把它移到
-      `data/removed-plugins/<id>-<时间戳>/data/`，但**重装不会自动恢复**
-- [ ] **改名后检查 `[[requires]]`**：别的插件里写的 value 也要跟着改，
-      否则启动时报"缺少依赖"
-- [ ] **命令 id 全局唯一**：不同插件的命令 id 撞了会报
-      「feature 冲突」，表现是其中一个插件起不来
-- [ ] **命令和内置命令别重名**（`/help`、`/plugins`）
-- [ ] **高频路径别刷日志**：`host.log('debug', ...)` 会进缓冲区
-- [ ] **初始化别覆盖已保存状态**：先 `host.storage.get`，只有不存在时才写默认
-- [ ] **共享数据重启/重载不会丢**：`[[shared]]` 值只有删除插件才清；不要把 per-chat 数据覆盖成全局对象
-- [ ] **定时器/子进程在 shutdown 里清理**：否则重载会留孤儿
-
 ## 6.1a 观察消息：`observe = true`
 
 **问题**：AI 聊天是 `last = true` 的兜底插件。前面被 `keyword-reply` 认领的消息
@@ -1313,7 +1327,7 @@ AI 相关功能分散在多个插件，配置必须**跟着提供能力的插件
 3. 跨插件开关统一用 `chat_*` 命名（`chat_enabled` / `chat_pct`）
 4. `ai-chat` 页面只保留自己的记忆、分条、水群等设置，并提供「相关插件设置」入口
 
-## 6.1e 官方依赖：能调就别自己打包
+## 6.1d 官方依赖：能调就别自己打包
 
 下面这些能力由框架或官方插件提供，**调用前声明依赖，不要自己打包对应的 SDK / 原生模块**。
 控制台「依赖」页（`/deps`）会实时列出当前可用的官方依赖。
@@ -1353,7 +1367,7 @@ if (!r?.ok) {
 3. 官方依赖由框架/官方插件维护，升级时调用方不用改
 4. 新增官方依赖要同时更新 `/deps` 页和本节表格
 
-## 6.1f 依赖：先看运行时，别重复打包
+## 6.1e 依赖：先看运行时，别重复打包
 
 依赖分三层，查找顺序**从插件到框架**：
 
@@ -1564,7 +1578,7 @@ http://10.0.0.140:30008/anzu/QixinBot-release/releases/tag/runtimes-v1
 
 控制台的下载按钮暂未接；可以手动下载后，在「依赖」页上传安装。只提供这 4 个完整包，不下载官方裸解释器。
 
-## 6.1g 混合依赖：同时用 Node.js 和 Python
+## 6.1f 混合依赖：同时用 Node.js 和 Python
 
 可以。**一个插件只有一个主进程**，混合依赖 = 主进程 + 另一种语言的子进程。
 
@@ -1653,7 +1667,7 @@ deps/python/.../*.pyd           → 拒绝
 
 所以混合依赖插件仍然可以**一份包跨平台**，平台差异由两边的运行时包负责。
 
-## 6.1h 数据放哪、什么时候会丢
+## 6.1g 数据放哪、什么时候会丢
 
 这是插件最容易踩的坑：**把要持久化的东西放在模块变量里，重启就没了**。
 
@@ -3000,7 +3014,7 @@ args = { city = { type = "string", required = true } }
 
 ---
 
-## 6.19b 超时可配置：重依赖的服务插件
+## 6.19a 超时可配置：重依赖的服务插件
 
 默认超时：
 
@@ -3058,7 +3072,7 @@ async initialize() {
 }
 ```
 
-## 6.19a 加载顺序：`load_order`
+## 6.19b 加载顺序：`load_order`
 
 **问题**：服务 B 的 `initialize` 要调服务 A，但按 id 字母序 B 可能先起来。
 
@@ -3587,7 +3601,7 @@ setInterval(() => {
 
 ## 7.9 依赖怎么打包
 
-**先看 [6.1f](#61f-依赖先看运行时别重复打包) 的运行时清单。表里有的，不要打包。**
+**先看 [6.1e](#61e-依赖先看运行时别重复打包) 的运行时清单。表里有的，不要打包。**
 
 ### 决策顺序
 
@@ -3689,6 +3703,9 @@ version = "4.10.*"
 ---
 
 ## 10. 安装、启用、卸载
+
+本地 dev 测好后：把 `.anzu` 放进服务器的 `plugins\` 目录（或 WebUI 上传），
+热重载自动安装，管理员点「启用」即可。服务器运维见 [DEPLOY.md](./DEPLOY.md)。
 
 - 把 `.anzu` 丢进 `plugins/` → 自动解压到运行区 → **默认未启用**。
 - 管理员在 WebUI 点「启用」才真正启动进程。
