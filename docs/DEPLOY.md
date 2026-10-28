@@ -4,6 +4,8 @@
 
 - 构建：`.\tools\build.ps1`（产物 `bin/qixinbot.exe`）
 - 提交前跑 `.\tools\check.ps1`（vet + test）；部署照旧 `.\tools\deploy.ps1`
+- 从旧版本升级：`data/idle.json`、`data/idle-switch.json`、`data/tasks.json`
+  已不再使用（休眠/框架定时已删除），可以删掉
 
 ## 内存怎么省（2G 小机器）
 
