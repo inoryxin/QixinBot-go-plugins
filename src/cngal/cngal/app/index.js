@@ -1,7 +1,7 @@
 // 国 G 周报
 //
 // 从 QixinBot 的 cngal 插件移植。
-// 原版用 setInterval(60s) 检查是否到点，这里换成 [[schedule]] + run_task。
+// 原版用 setInterval(60s) 检查是否到点，这里由插件自管的周报定时器驱动。
 // 绘制交给 canvas 服务插件（见 lib/render.mjs），本插件不再自带 canvas 原生模块。
 import { createRequire } from 'node:module'
 import { serve, host, chatOf } from '../_sdk/qixin.mjs'
@@ -222,10 +222,7 @@ const app = {
 serve(app)
 
 // ---- 插件自管定时（发行版）----
-// 开发线（QIXIN_EXPERIMENTAL=1）由框架的 [[schedule]] 接管，这里不重复启动。
-const __SELF_TIMER = !process.env.QIXIN_EXPERIMENTAL
 function __runTask(task) {
-  if (!__SELF_TIMER) return
   Promise.resolve(app.run_task({ task })).catch((e) => {
     host.log('warn', `定时 ${task} 执行失败: ${e && e.message ? e.message : e}`)
   })
@@ -242,7 +239,6 @@ function __nextWeeklyDelay() {
   return { next, delay: next.getTime() - now.getTime() }
 }
 function rescheduleCngal() {
-  if (!__SELF_TIMER) return
   if (__cngalTimer) clearTimeout(__cngalTimer)
   const { delay } = __nextWeeklyDelay()
   __cngalTimer = setTimeout(async () => {
@@ -251,4 +247,4 @@ function rescheduleCngal() {
   }, delay)
 }
 rescheduleCngal()
-if (__SELF_TIMER) host.log('info', '发行版自管定时已启动')
+host.log('info', '自管定时已启动')

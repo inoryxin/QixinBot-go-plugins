@@ -29,12 +29,6 @@ aliases = ["b站"]
 description = "查看 B 站订阅概览"
 
 [[commands]]
-id = "bili.list"
-usage = "bili list"
-description = "列出订阅的 UP 主"
-require_prefix = false
-
-[[commands]]
 id = "bili.check"
 usage = "bili check"
 description = "立即检查一次直播与动态"
@@ -50,12 +44,6 @@ description = "查看已订阅的 B 站 UP 主当前有没有在直播、直播�
 
 [tools.parameters]
 type = "object"
-
-# 轮询探测：固定 20 秒问一次，实际间隔由设置里的 liveSeconds/dynamicSeconds 控制
-[[schedule]]
-id = "poll"
-every = "20s"
-description = "检查直播状态与动态更新"
 
 [[settings]]
 key = "cookie"

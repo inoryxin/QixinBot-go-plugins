@@ -5,8 +5,6 @@ apiVersion = "1.x"
 exec = ["node", "app/index.js"]
 description = "查询 TeamSpeak 3 在线频道，支持进/退通知"
 
-# 低频插件：闲置后回收进程，有人用再拉起
-idle_stop = "1h"
 
 permissions = ["onebot.write"]
 
@@ -33,12 +31,6 @@ description = "查询 TeamSpeak 3 当前在线频道和用户。用户问「TS �
 
 [tools.parameters]
 type = "object"
-
-# 轮询探测：固定 15 秒问一次，实际按设置里的 pollSeconds 节流
-[[schedule]]
-id = "poll"
-every = "15s"
-description = "检查 TS3 在线变化并推送进出通知"
 
 [[settings]]
 key = "host"

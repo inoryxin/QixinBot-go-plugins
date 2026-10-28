@@ -1,7 +1,7 @@
 // TS3 在线追踪
 //
 // 从 QixinBot 的 ts3-tracker 移植。原版用 module.exports + setup/setInterval，
-// 这里换成 serve + handle_message + [[schedule]]。
+// 这里换成 serve + handle_message + 自管轮询定时。
 //
 // TeamSpeak 3 ServerQuery 是纯 TCP 文本协议：
 //   连上 → 发命令（每行一条）→ 每条命令回一行数据 + 一行 `error id=0 msg=ok`
@@ -276,7 +276,7 @@ async function poll() {
 
 // ---------------------------------------------------------------- 服务
 
-serve({
+const app = {
   async initialize({ settings: initial }) {
     settings = initial || {}
     host.log('info', `TS3 追踪启动 host=${settings.host || '未配置'}`)
@@ -332,4 +332,14 @@ serve({
     }
     return { ok: true }
   },
-})
+}
+serve(app)
+
+// ---- 插件自管定时 ----
+function __runTask(task) {
+  Promise.resolve(app.run_task({ task })).catch((e) => {
+    host.log('warn', `定时 ${task} 执行失败: ${e && e.message ? e.message : e}`)
+  })
+}
+setInterval(() => __runTask('poll'), 15 * 1000)
+host.log('info', '自管定时已启动')

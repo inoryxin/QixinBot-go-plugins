@@ -1,21 +1,9 @@
 # 部署说明
 
-## 开发线 / 发行版怎么同步
+## 构建与检查
 
-**同一份源码，不分开分支**，区别只在构建标签：
-
-| | 构建命令 | 产物 | 包含 |
-|---|---|---|---|
-| 发行版 | `.\tools\build.ps1` | `bin/qixinbot.exe` | 常规功能 |
-| 开发线 | `.\tools\build.ps1 -Line dev` | `bin/qixinbot-dev.exe` | 常规功能 + 休眠/唤醒实验 |
-
-规则：
-
-1. **框架的普通改动默认两边都有**，不存在"只改了一边"的问题
-2. 只有休眠/唤醒这类实验功能放进 `//go:build dev` 的文件（`internal/plugin/experimental_*.go`）
-3. 实验功能要在运行时区分插件行为时，用环境变量 `QIXIN_EXPERIMENTAL=1`（开发线自动注入）
-4. 提交前跑 `.\tools\check.ps1`：发行版和开发线的 vet/test 都必须过
-5. 部署发行版照旧 `.\tools\deploy.ps1`；开发线产物是另一个文件名，不会覆盖发行版
+- 构建：`.\tools\build.ps1`（产物 `bin/qixinbot.exe`）
+- 提交前跑 `.\tools\check.ps1`（vet + test）；部署照旧 `.\tools\deploy.ps1`
 
 ## 内存怎么省（2G 小机器）
 
@@ -48,18 +36,13 @@ node_options = "--max-old-space-size=96"
 - 非消息事件（notice/request）走有界队列（256）异步处理：**极端情况下会丢弃**并记录 `dropped` 计数；需要不丢事件的业务请用插件轮询做补偿。
 - `config.toml` 保存为仅所有者可读写（0600），里面可能有账号凭据。
 
-## 发行版 / 开发线
+## 构建
 
 ```powershell
-# 发行版（默认）：不含休眠与定时唤醒
 go build -o bin/qixinbot.exe ./cmd/bot
-
-# 开发线：开启休眠/定时唤醒实验功能
-go build -tags dev -o bin/qixinbot.exe ./cmd/bot
 ```
 
-发行版：插件常驻，定时全部由插件自己管理（`setInterval` / `setTimeout`）。框架**不注册** `[[schedule]]`。
-开发线：额外的「休眠」页、闲置回收、到点唤醒，属于实验功能，手册见 PLUGIN-DEV.md。
+插件常驻，定时全部由插件自己管理（`setInterval` / `setTimeout`）；manifest 不支持 `[[schedule]]`。
 
 ## 目标机器
 
@@ -332,7 +315,7 @@ C:\Users\anzu\Documents\xin\tools\w64devkit\w64devkit\bin\gcc.exe
 go test -race ./internal/... -count=1
 ```
 
-**所有 internal 包通过**（含休眠统计并发用例 `TestIdleStatsConcurrent`）。
+**所有 internal 包通过**。
 没有 gcc 时 `-race` 会直接报 "requires cgo"。
 
 ### 上传与安装的竞态

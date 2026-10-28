@@ -2362,7 +2362,6 @@ serve({
       plugin: plugin_id || process.env.QIXIN_PLUGIN_ID || '',
       dataDir: DATA_DIR,
       python: process.env.QIXIN_PYTHON || '自动探测',
-      experimental: process.env.QIXIN_EXPERIMENTAL === '1',
     })
     return { api_version: '1.0' }
   },

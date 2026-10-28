@@ -5,9 +5,6 @@ apiVersion = "1.x"
 exec = ["node", "app/index.js"]
 description = "控制 Home Assistant 里的灯、电脑、电热毯，查温湿度"
 
-# 低频插件：闲置后回收进程，有人用再拉起
-idle_stop = "1h"
-
 permissions = ["onebot.write"]
 
 # 严格遵循命令：只认 home/ha/家电 前缀，自然语言交给 AI

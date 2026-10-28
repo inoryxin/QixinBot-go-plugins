@@ -32,12 +32,6 @@ description = "查询 TeamSpeak 3 当前在线频道和用户。用户问「TS �
 [tools.parameters]
 type = "object"
 
-# 轮询探测：固定 15 秒问一次，实际按设置里的 pollSeconds 节流
-[[schedule]]
-id = "poll"
-every = "15s"
-description = "检查 TS3 在线变化并推送进出通知"
-
 [[settings]]
 key = "host"
 label = "TS3 地址"

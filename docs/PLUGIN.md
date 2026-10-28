@@ -487,7 +487,6 @@ pip install --target deps/python --only-binary=:all: <包名>
 | `[[shared]]` | table | 否 | 声明可读写的共享数据 key |
 | `[[requires]]` | table | 否 | 依赖的插件/命令/环境 |
 | `[runtime]` | table | 否 | 解释器要求：`kind` / `version` / `platform` |
-| `[[schedule]]` | table | 否 | **仅开发线**：`every` / `cron` 定时 |
 | `use_tools` | bool | 否 | 该插件给 AI 提供工具（详情页显示工具面板） |
 | `concurrency` | string | 否 | `plugin`（默认，串行）/ `session`（同会话串行、跨会话并发） |
 | `load_order` | int | 否 | 启动顺序，小的先加载（服务插件用） |
@@ -1170,7 +1169,7 @@ WebUI 的 `GET /api/capabilities` 能看到每个能力的提供者列表和顺�
 - [ ] **下拉框给中文**：`options` + `option_labels`
 - [ ] **消息要全量看到就开 `observe`**：`last = true` 的兜底插件收不到
       被别的插件认领的消息
-- [ ] **发行版定时自己管**：用 `setInterval` / `setTimeout`；`[[schedule]]` 只在开发线可用
+- [ ] **定时自己管**：用 `setInterval` / `setTimeout`
 - [ ] **改插件 id 前先备份 `data/`**：设置和存储都在
       `data/plugins/<id>/data/`；删插件时框架会把它移到
       `data/removed-plugins/<id>-<时间戳>/data/`，但**重装不会自动恢复**
@@ -1183,13 +1182,6 @@ WebUI 的 `GET /api/capabilities` 能看到每个能力的提供者列表和顺�
 - [ ] **初始化别覆盖已保存状态**：先 `host.storage.get`，只有不存在时才写默认
 - [ ] **共享数据重启/重载不会丢**：`[[shared]]` 值只有删除插件才清；不要把 per-chat 数据覆盖成全局对象
 - [ ] **定时器/子进程在 shutdown 里清理**：否则重载会留孤儿
-
-## 6.1b 休眠（仅开发版实验功能）
-
-**发行版没有休眠/定时唤醒。** 插件在发行版里常驻运行，定时由插件自己管理。
-
-休眠与"到点唤醒"的完整说明在 [PLUGIN-DEV.md](PLUGIN-DEV.md)；使用它必须用开发线构建：
-`go build -tags dev ./cmd/bot`。
 
 ## 6.1a 观察消息：`observe = true`
 
@@ -1216,9 +1208,9 @@ async observe_message({ session }) {
 - 异步调用，**失败不影响用户收到的回复**
 - 带命令前缀的消息也会抄过来，自己判断要不要（`session.has_prefix`）
 
-## 6.1c 定时任务：发行版自己管理
+## 6.1c 定时任务：插件自己管理
 
-**发行版不运行 `[[schedule]]`**，也没有"到点唤醒"；进程常驻，定时由插件自己起：
+进程常驻，定时由插件自己起：
 
 ```js
 serve({
@@ -1231,7 +1223,6 @@ serve({
 
 - 计时从插件启动时刻算，重启会重新计时
 - 需要"每天几点"这种墙钟时间，用 `setTimeout` 算到下一个目标时间再递归
-- `[[schedule]]`、`run_task`、暂停/补跑只在开发线（`-tags dev`）存在，说明见 [PLUGIN-DEV.md](PLUGIN-DEV.md)
 
 ## 6.1d 非消息事件要声明订阅：`events`
 
@@ -1284,9 +1275,9 @@ JS SDK 的发消息方法是 **`host.sendMessage(chat, segments)`**（驼峰）�
 
 不用等 60 秒超时才收回，`cancel()` 也会主动通知。
 
-### 发行版定时：插件自己管理
+### 定时：插件自己管理
 
-发行版**不运行** `[[schedule]]`，也没有休眠/唤醒。定时必须在插件进程里自己起：
+定时必须在插件进程里自己起：
 
 ```js
 serve({
@@ -1301,7 +1292,6 @@ serve({
 
 - 进程常驻，计时器从**插件启动时刻**开始算；重启会重新计时
 - 需要"每天几点"这类墙钟时间，用 `setTimeout` 算到下一个目标时间再递归
-- `[[schedule]]` 只在开发线（`-tags dev`）生效，用来做休眠唤醒实验
 
 ## AI 插件设置归属约定
 
@@ -1773,7 +1763,6 @@ serve({
 - 别在模块顶层直接 `setInterval`，放在 `initialize` 里，方便拿到设置
 - 出错要 catch，不然一个异常可能带走定时器
 - 需要重启后不重置，就把"上次执行时间"存 `host.storage`，启动时补一次
-- 开发线的 `[[schedule]]` + `run_task` 提供暂停/补跑/任务页，见 [PLUGIN-DEV.md](PLUGIN-DEV.md)
 
 ## 6.4 运行环境
 
@@ -2199,7 +2188,6 @@ process.env.QIXIN_PLUGIN_ID   // 插件 id
 process.env.QIXIN_PLUGIN_DIR  // 运行区根目录
 process.env.QIXIN_DATA_DIR    // 持久数据目录
 process.env.QIXIN_ASSETS_DIR  // 素材目录
-process.env.QIXIN_EXPERIMENTAL // 开发线为 1（[[schedule]] 由框架接管，别再自起 setInterval）；发行版没有
 ```
 
 依赖目录也会自动注入：
@@ -2865,8 +2853,6 @@ function scheduleDaily(hour, minute, fn) {
 3. 重启会重新计时；需要不重置就把上次执行时间/进度存 `host.storage`
 4. 定时任务出错只在日志里，是否通知用户由插件决定
 
-开发线才有 `[[schedule]]` + `run_task`（暂停、补跑、任务页），见 [PLUGIN-DEV.md](PLUGIN-DEV.md)。
-
 ## 6.19 结构化命令：让宿主帮你解析参数
 
 以前插件得自己干这些：
@@ -3289,13 +3275,6 @@ concurrency = "session"    # 不同群可并行
 per_user = "3s"            # 但同一个用户 3 秒一次
 per_group = "1s"           # 同一个群 1 秒一次
 ```
-
-### 定时任务和消息共享同一把锁（开发线）
-
-开发线的 `run_task` 也走同一把锁——任务的 `plugin.run_task` 正在跑时，
-这个插件的消息会等它（反之亦然）。
-
-**所以定时任务别做太慢的事**：超过 2 分钟会被超时打断，但期间消息一直在等。
 
 ## 6.21 冷却、取消和失败反馈
 
@@ -3959,7 +3938,6 @@ exec = ["app/weather.exe"]
 | 捕获异常后静默 | 用户等不到回复 | 打日志 + 提示 |
 | `usage` 里写 `/` | 配了前缀就永远不触发 | 交给框架加，加载时会自动剥 |
 | `require_prefix = false` 却不配 `allow_users` | 陌生人能控家电 | 有副作用就配白名单 |
-| 发行版想用 `[[schedule]]` | 发行版不注册，任务不会跑 | 插件内 `setInterval` 自管 |
 | 自己建文件存状态 | 路径乱、备份漏 | `host.storage` |
 | 推送时传 `account: 'main'` | 多账号或改名就坏 | 不传，框架用默认账号 |
 | 带原生模块却不写 `platform` | 换系统启动崩 | `[runtime] platform = "..."` |
@@ -4003,7 +3981,7 @@ exec = ["app/weather.exe"]
 ### 14.4 数据与依赖
 
 - [ ] 状态存 `host.storage` 或 `data/`，不写 `app/`
-- [ ] 发行版定时自己用 `setInterval` / `setTimeout`（开发线才用 `[[schedule]]`）
+- [ ] 定时自己用 `setInterval` / `setTimeout`
 - [ ] 推送不传 `account`（交给框架）
 - [ ] 带原生模块的包写了 `platform`
 - [ ] 包里没有 `node_modules/.cache`、测试文件、`.git`

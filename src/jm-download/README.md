@@ -143,7 +143,6 @@ version = ">=12,<14"
 | `QIXIN_DATA_DIR` | 插件数据根目录（**绝对路径**）；优先用它，`initialize` 的 `data_dir` 也认 |
 | `QIXIN_PYTHON` | 控制台「运行时环境」配的 Python；`findPython` 在插件设置之后优先用它 |
 | `QIXIN_PLUGIN_DIR` / `QIXIN_PLUGIN_ID` | 只写进启动日志，方便排查"到底加载的哪个运行区" |
-| `QIXIN_EXPERIMENTAL` | 只写日志。本插件不依赖框架定时（发行版/开发线都用自己的 `setInterval`） |
 
 启动日志里会有一行 `运行环境`，直接显示 `dataDir` / `python` 来源，排障先看它。
 

@@ -106,14 +106,6 @@ default = 9
 min = 0
 max = 30
 
-# 每分钟检查一次是不是到了推送时间
-[[schedule]]
-id = "tick"
-# 用设置里的 分钟/小时/星期 生成 cron：设置一改框架就重排，
-# 不用插件自己每 60 秒轮询"到点没"
-cron = "{{minute}} {{hour}} * * {{weekday}}"
-description = "每周定时推送国 G 周报"
-
 [runtime]
 kind = "node"
 version = ">=18"

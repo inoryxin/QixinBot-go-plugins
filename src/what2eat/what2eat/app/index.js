@@ -1,7 +1,7 @@
 // 今天吃什么
 //
 // 从 QixinBot 的 what2eat 移植。原版用 setInterval + 正则匹配自然语言，
-// 这里改成声明式命令（吃什么/喝什么/加菜/删菜/我的菜），定时提醒走 [[schedule]]。
+// 这里改成声明式命令（吃什么/喝什么/加菜/删菜/我的菜），定时提醒由插件自管定时驱动。
 import { serve, host, chatOf } from '../_sdk/qixin.mjs'
 import { FOOD, DRINKS } from './data.js'
 
@@ -77,7 +77,7 @@ function parseIds(value) {
 function canEditCustom(session) {
   const uid = Number(session.user_id) || 0
   // 没配 ownerQQ 时退化成"谁都别改"，避免陌生人乱加菜
-  const owners = parseIds(settings.ownerQQ)
+  const owners = parseIds(settings.ownerQQ || process.env.QIXIN_OWNER)
   if (!owners.length) return false
   if (owners.includes(uid)) return true
   return parseIds(settings.allowCustomUsers).includes(uid)
@@ -105,7 +105,7 @@ async function remind() {
   const day = todayKey()
 
   const targets = []
-  for (const id of parseIds(settings.ownerQQ)) {
+  for (const id of parseIds(settings.ownerQQ || process.env.QIXIN_OWNER)) {
     targets.push({ chat_type: 'private', chat_id: id })
   }
   for (const id of parseIds(settings.remindGroups)) {
@@ -269,14 +269,11 @@ const app = {
 }
 serve(app)
 
-// ---- 插件自管定时（发行版）----
-// 开发线（QIXIN_EXPERIMENTAL=1）由框架的 [[schedule]] 接管，这里不重复启动。
-const __SELF_TIMER = !process.env.QIXIN_EXPERIMENTAL
+// ---- 插件自管定时 ----
 function __runTask(task) {
-  if (!__SELF_TIMER) return
   Promise.resolve(app.run_task({ task })).catch((e) => {
     host.log('warn', `定时 ${task} 执行失败: ${e && e.message ? e.message : e}`)
   })
 }
-__SELF_TIMER && setInterval(() => __runTask('remind'), 30 * 1000)
-if (__SELF_TIMER) host.log('info', '发行版自管定时已启动')
+setInterval(() => __runTask('remind'), 30 * 1000)
+host.log('info', '自管定时已启动')

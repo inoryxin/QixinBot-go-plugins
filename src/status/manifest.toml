@@ -5,8 +5,6 @@ apiVersion = "1.x"
 exec = ["node", "app/index.js"]
 description = "CPU / 内存 / 磁盘 / 运行时长，支持 /status 和 /状态"
 
-# 低频插件：闲置后回收进程，有人用再拉起
-idle_stop = "2h"
 
 concurrency = "session"
 

@@ -126,11 +126,6 @@ assets/stickers/
 
 ### 主动消息（ai-proactive）
 
-```toml
-[[schedule]]
-id = "check"
-every = "10m"
-```
 
 **什么时候说**：
 - 群里连续 N 分钟没人说话（N 可配，默认 120）

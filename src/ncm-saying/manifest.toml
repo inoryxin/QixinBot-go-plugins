@@ -5,9 +5,6 @@ apiVersion = "1.x"
 exec = ["node", "app/index.js"]
 description = "随机来一条网易云音乐热评"
 
-# 低频插件：闲置后回收进程，有人用再拉起
-idle_stop = "6h"
-
 concurrency = "session"
 
 [[commands]]
@@ -22,18 +19,24 @@ type = "string"
 default = ""
 hint = "留空用默认的 aa1.cn 接口"
 
-# 每天定时往群里发一条（走框架的定时任务，重启后时间表还在）
-[[schedule]]
-id = "daily"
-cron = "0 9 * * *"
-description = "每天早上 9 点往指定群发一条热评"
+[[settings]]
+key = "hour"
+label = "几点发（0-23）"
+type = "number"
+default = 0
+
+[[settings]]
+key = "minute"
+label = "几分发（0-59）"
+type = "number"
+default = 0
 
 [[settings]]
 key = "auto_groups"
 label = "自动发送的群号"
 type = "string"
 default = ""
-hint = "逗号分隔；留空则不发"
+hint = "多个群号用 | 或逗号或空格分隔都行；留空则不发"
 
 [cooldown]
 per_user = "3s"

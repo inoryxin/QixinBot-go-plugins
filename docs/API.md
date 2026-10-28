@@ -33,7 +33,6 @@ apiVersion = "2.x"   # 主版本 2 的框架才会加载
 | 类别 | 稳定性 | 说明 |
 |---|---|---|
 | `plugin.initialize` / `handle_message` / `handle_event` / `call_tool` / `get_settings` / `set_settings` / `shutdown` | **稳定** | 签名不会变，只会加可选参数 |
-| `plugin.run_task` | 开发线 | 发行版不注册 `[[schedule]]`，不会调用 |
 | `host.reply` / `send_message` / `call_capability` / `call_tool` / `storage_*` / `shared_*` / `log` | **稳定** | 同上 |
 | manifest 的 `id` / `name` / `version` / `apiVersion` / `exec` / `[[commands]]` / `[[settings]]` / `[[tools]]` / `[[requires]]` / `[runtime]` / `[access]` | **稳定** | 只会加新字段，不改语义 |
 | 消息段格式（`{type, data}`） | **稳定** | OneBot 11 的标准，不会动 |
@@ -46,8 +45,6 @@ apiVersion = "2.x"   # 主版本 2 的框架才会加载
 |---|---|
 | 日志格式 | 随时改进，插件别解析自己的 `host.log` 输出 |
 | `POST /api/chat/inject` 的 `image` 参数 | 传 http(s) 图片地址，可以只发图（text 留空） |
-| `POST /api/idle/toggle` (enabled) | **仅开发线**；发行版返回 404。闲置回收总开关，写 data/idle-switch.json |
-| `POST /api/idle` (plugin, minutes) | **仅开发线**；发行版返回 404。设置闲置回收时长，0 = 不回收；写 data/idle.json |
 | `POST /api/runtime` (kind=node\|python, path) | 指定解释器绝对路径；留空恢复自动探测；写 data/runtime.json |
 | `plugin.observe_message` | 声明 `observe = true` 后，每条消息都会抄一份；返回值忽略 |
 | `GET /api/trusted-keys` | 返回 `{keys:[{key,fingerprint,source}], allow_unsigned}`；`source` = `official` / `config` / `added` |
@@ -103,7 +100,7 @@ if (!r?.ok) {
 失败直接返回错误，不会换个提供者再执行一遍。
 manifest 里声明 `retry = "always"` 的能力，超时/不可用/内部错误时
 才会按优先级试下一个提供者；参数错和权限错永远不重试（换谁都一样）。
-提供者没运行的会先尝试唤醒，唤醒失败就跳到下一个。
+提供者没运行的会先拉起，失败就跳到下一个。
 
 **`[[requires]]` 声明依赖**（框架加载时会检查，缺了给你 `missing_dependency` 而不是崩溃）：
 
@@ -249,19 +246,6 @@ value = "llm"
 ```
 
 宿主保存设置后会推 `set_settings`，插件更新内存里的值即可。
-
-### 2.6b `plugin.run_task`（仅开发线）
-
-开发线宿主按 `[[schedule]]` 定时调用；发行版不注册调度，不会调用。
-
-```json
-// 参数
-{ "task": "check-updates" }
-// 返回
-{ "ok": true }
-```
-
-单次超时 2 分钟。抛错会记到任务的 `last_error`，不影响下次调度。
 
 ### 2.7 `plugin.ping` / `plugin.shutdown`
 
@@ -569,8 +553,6 @@ OneBot 11 原生格式，不重新发明：
 | POST | `/api/tools/call` | 手动调用工具（`name` + `args` JSON） |
 | GET | `/api/capabilities` | 能力及其提供者（按优先级） |
 | POST | `/api/capabilities/call` | 直接调能力（验证覆盖关系） |
-| GET | `/api/tasks` | 定时任务列表与状态 |
-| POST | `/api/tasks/run` | 手动触发一次任务（`plugin` + `task`） |
 | GET | `/api/chat/messages?after=N` | 增量拉取最近消息 |
 | POST | `/api/chat/send` | 以机器人身份发消息（`chat_type`/`chat_id`/`text`） |
 | POST | `/api/chat/inject` | **测试注入**：伪造一条收到的消息走完整分发，插件回复被捕获、不真发到 QQ |
@@ -629,11 +611,11 @@ my-plugin   生成日报    group:123456    15:04:05   运行中
 **限制**：
 
 - **不活过重启**：插件进程死了，后台任务也一起没了
-- **要跨重启的任务：把进度/上次时间存 `host.storage`**，启动时续跑（发行版）
+- **要跨重启的任务：把进度/上次时间存 `host.storage`**，启动时续跑
 - **插件卸载时**记录被清掉（任务随进程消失）
 
 **这是有意的**：后台任务活在插件进程里，进程没了任务就该没。
-真正需要持久化的任务（每天推日报、定时检查订阅）在发行版里用插件内 `setInterval`/`setTimeout`，并把上次执行时间存 `host.storage`；开发线才用 `[[schedule]]` + `run_task`。
+真正需要持久化的任务（每天推日报、定时检查订阅）用插件内 `setInterval`/`setTimeout`，并把上次执行时间存 `host.storage`。
 
 ### 5.3a `host.ask`：等用户下一条消息
 

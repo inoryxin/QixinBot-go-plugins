@@ -116,7 +116,7 @@ async function trySpeak(chatID, reason, force = false) {
   return r
 }
 
-serve({
+const app = {
   async initialize({ settings: s }) {
     settings = s || {}
     // 软依赖：没有 AI 聊天插件也能装着，但不会说话。
@@ -193,7 +193,8 @@ serve({
     await reply(lines.join('\n'))
     return { handled: true }
   },
-})
+}
+serve(app)
 
 function chatOf(session) {
   return {
@@ -202,3 +203,12 @@ function chatOf(session) {
     chat_id: session.chat_id || 0,
   }
 }
+
+// ---- 插件自管定时 ----
+function __runTask(task) {
+  Promise.resolve(app.run_task({ task })).catch((e) => {
+    host.log('warn', `定时 ${task} 执行失败: ${e && e.message ? e.message : e}`)
+  })
+}
+setInterval(() => __runTask('tick'), 10 * 60 * 1000)
+host.log('info', '自管定时已启动')

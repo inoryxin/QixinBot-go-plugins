@@ -92,13 +92,13 @@ blog  sleep-guard  watch  tieba-persona  travel-frog  forward-relay  knowledge
 
 | 旧 | 新 |
 |---|---|
-| `manifest.json` | `manifest.toml`（`id` / `commands` / `settings` / `schedule`） |
-| `module.exports = { setup, execute }` | `serve({ initialize, handle_message, run_task })` |
+| `manifest.json` | `manifest.toml`（`id` / `commands` / `settings`） |
+| `module.exports = { setup, execute }` | `serve({ initialize, handle_message })` |
 | `session.reply(text)` | `host.reply(chatOf(session), text)` |
 | `context.client.call('send_group_msg', …)` | `host.call_onebot('send_group_msg', …)` |
 | `readJson/writeJsonAtomic` | `host.storage_get/set` 或 `db.sqlite` |
 | `registerTool` | manifest 的 `[[tools]]` |
-| 自己起 `setInterval` 做定时 | `[[schedule]]`（框架持久化，重启不丢） |
+| 旧框架的定时 | `setInterval` / `setTimeout`（插件自管；跨重启把进度存 `host.storage`） |
 | `'../src/services'` 调别的插件 | `host.capability('xxx', args)` |
 
 **一句话**：业务逻辑照抄，胶水层换成新 SDK。

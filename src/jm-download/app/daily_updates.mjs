@@ -5,7 +5,7 @@
 //     都由 app/index.js 通过 configure() 注入（同一个插件里只有一套配置来源）。
 //   · 不再负责"发消息"：本文件只产出清单数据和图片路径，发消息统一走 index.js 的
 //     host.reply —— 这样群白名单、权限、失败降级只有一处实现。
-//   · 采集由 index.js 的定时器驱动（发行版没有框架级 [[schedule]]）。
+//   · 采集由 index.js 的定时器驱动。
 //
 // 状态文件：<data>/daily_updates.json
 //   { date: "2026-10-26", items: [{ id, name, author, category, categorySub, tags, updateAt, seenAt, cover }], lastRun }
