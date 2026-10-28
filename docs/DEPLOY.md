@@ -7,6 +7,13 @@
 - 从旧版本升级：`data/idle.json`、`data/idle-switch.json`、`data/tasks.json`
   已不再使用（休眠/框架定时已删除），可以删掉
 
+## 配置热重载
+
+改 `config.toml` **不用重启**（5 秒内自动生效）的热字段：
+`[log] level`、`[log] gate_debug`、`[send] interval_ms`、`[send] allow_groups`。
+其余字段（账号、协议端地址等需要重连）改了仍要重启。
+配置解析失败时沿用旧配置并记 WARN，文件改一半也不会把 bot 改挂。
+
 ## 内存怎么省（2G 小机器）
 
 实测：框架本身约 22 MB，每个 Node 插件常驻 10~40 MB（取决于插件和运行时长）。

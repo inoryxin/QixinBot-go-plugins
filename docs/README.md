@@ -24,7 +24,7 @@
 
 八个页面：概览 · 连接 · 权限 · 插件 · 指令 · 聊天 · 审计 · 日志
 
-- **共享运行时宿主（实验）**：manifest 加 `cohost = true` 的纯 JS 插件共用一个
+- **共享运行时宿主（默认开）**：manifest 加 `cohost = true` 的纯 JS 插件共用一个
   Node 进程，内存省 ~50-60%（28 插件实测 1.0GB → ~430MB）；崩溃域 worker 级、
   自动重启重初始化、熔断自动回退独占——详见 COHOST-DESIGN.md 与 PLUGIN.md §0.2
 - **主题**：跟随系统 / 浅色 / 深色，右上角切换，存在浏览器本地（localStorage），

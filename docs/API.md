@@ -552,6 +552,7 @@ OneBot 11 原生格式，不重新发明：
 | GET | `/api/tools` | 工具列表 |
 | POST | `/api/tools/call` | 手动调用工具（`name` + `args` JSON） |
 | GET | `/api/capabilities` | 能力及其提供者（按优先级） |
+| GET | `/api/metrics` | 24h 指标时间序列（5 分钟一窗：消息/回复/插件延迟/内存/队列深度；内存态，重启清零） |
 | POST | `/api/capabilities/call` | 直接调能力（验证覆盖关系） |
 | GET | `/api/chat/messages?after=N` | 增量拉取最近消息 |
 | POST | `/api/chat/send` | 以机器人身份发消息（`chat_type`/`chat_id`/`text`） |
