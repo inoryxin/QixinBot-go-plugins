@@ -326,6 +326,9 @@ value = "llm"
 | read | `get_group_list` | 无 |
 | write | `send_group_msg` | `permissions = ["onebot.write"]` |
 | admin | `set_group_ban` | `onebot.admin` |
+
+**发消息类 action 额外受 `send.allow_groups` 白名单约束**——
+和 `host.reply` 同一条出口规矩。想不受限地发群消息？用 `host.reply`（走当前会话）。
 | dangerous | `get_cookies` | `onebot.dangerous`（默认禁） |
 
 未声明返回 `-32000 permission_denied`。
