@@ -2,6 +2,7 @@ id = "what2eat"
 name = "今天吃什么"
 version = "1.0.0"
 apiVersion = "1.x"
+cohost = true
 exec = ["node", "app/index.js"]
 description = "随机推荐吃的喝的，中午/晚上提醒吃饭，支持自定义菜谱"
 
@@ -89,6 +90,12 @@ key = "allowCustomUsers"
 label = "允许改菜谱的 QQ（空=仅主人）"
 type = "string"
 default = ""
+
+# 每 30 秒检查一次是不是到了饭点
+[[schedule]]
+id = "remind"
+every = "30s"
+description = "午饭/晚饭到点提醒"
 
 [runtime]
 kind = "node"

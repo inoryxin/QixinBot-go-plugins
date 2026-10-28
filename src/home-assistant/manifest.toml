@@ -2,8 +2,10 @@ id = "home-assistant"
 name = "智能家居"
 version = "1.0.0"
 apiVersion = "1.x"
+cohost = true
 exec = ["node", "app/index.js"]
 description = "控制 Home Assistant 里的灯、电脑、电热毯，查温湿度"
+
 
 permissions = ["onebot.write"]
 

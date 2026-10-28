@@ -2,6 +2,7 @@ id = "keyword-reply"
 name = "关键词回复"
 version = "1.0.0"
 apiVersion = "1.x"
+cohost = true
 exec = ["node", "app/index.js"]
 description = "按关键词自动回复：精准/包含/开头/正则/模糊，可回文本、图片、语音"
 

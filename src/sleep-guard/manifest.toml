@@ -2,6 +2,7 @@ id = "sleep-guard"
 name = "催睡"
 version = "1.0.0"
 apiVersion = "1.x"
+cohost = true
 exec = ["node", "app/index.js"]
 description = "凌晨 5 点看主人设备还亮着就用 AI 私聊催睡，半小时后还不睡再催一次"
 permissions = ["onebot.write"]

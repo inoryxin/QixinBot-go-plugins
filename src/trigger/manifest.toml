@@ -2,6 +2,7 @@ id = "trigger"
 name = "关键词触发"
 version = "1.0.0"
 apiVersion = "1.x"
+cohost = true
 exec = ["node", "app/index.js"]
 description = "关键词 → HTTP 请求（GET/POST），支持模板回复和三层鉴权"
 
