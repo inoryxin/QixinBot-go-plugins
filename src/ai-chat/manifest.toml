@@ -336,5 +336,5 @@ key = "water_groups"
 label = "只在这些群水群（留空=全部群）"
 type = "string"
 default = ""
-hint = "群号用逗号或 | 分隔；不影响被 @ 时回复"
+hint = "群号用 | 分隔；不影响被 @ 时回复"
 

@@ -48,19 +48,20 @@ default = true
 
 [[settings]]
 key = "aliases"
-label = "别名（逗号分隔）"
+label = "别名（用 | 分隔）"
 type = "string"
-default = "祈歆,许雪然,雪然,祈歆酱,小祈歆"
+default = "祈歆|许雪然|雪然|祈歆酱|小祈歆"
 
 [[settings]]
 key = "actions"
-label = "动作词（逗号分隔）"
+label = "动作词（用 | 分隔）"
 type = "string"
-default = "在干嘛,干嘛呢,在不在,在吗,干啥呢,状态,怎么样"
+default = "在干嘛|干嘛呢|在不在|在吗|干啥呢|状态|怎么样"
+
 
 [[tools]]
 name = "get_qixin_status"
-description = "查询祈歆（许雪然）当前是否在线、状态和正在使用的设备。用户问「祈歆在干嘛/雪然在线吗/她睡了没」时调用。"
+description = "查询祈歆（许雪然）当前是否在线、状态和正在使用的设备。只有用户明确问起祈歆/雪然/她的状态时才调用。"
 
 [tools.parameters]
 type = "object"

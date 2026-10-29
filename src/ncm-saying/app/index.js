@@ -1,7 +1,7 @@
 // 网抑云：随机一条网易云音乐热评。
 //
 // 移植自旧版 ncm-saying。旧版自己算"今天发过没有"，写状态文件、起定时器；
-// 新版由插件自管每日定时：到点拉取热评推送。
+// 新版直接声明 [[schedule]]，由框架负责定时和持久化（重启不丢）。
 
 import { serve, host, chatOf } from '../_sdk/qixin.mjs'
 
@@ -62,12 +62,12 @@ const app = {
     return { handled: true }
   },
 
-  // 自管每日定时到点调用；群号从设置里读
+  // 框架按 [[schedule]] 调用；群号从设置里读
   async run_task({ task }) {
     if (task !== 'daily') return {}
 
     const groups = String(settings.auto_groups ?? '')
-      .split(/[,，\s]+/)
+      .split(/[|｜,，\s]+/)
       .map((s) => Number(s.trim()))
       .filter((n) => Number.isFinite(n) && n > 0)
 
@@ -94,14 +94,18 @@ const app = {
 }
 serve(app)
 
-// ---- 插件自管定时 ----
+// ---- 插件自管定时（发行版）----
+// 开发线（QIXIN_EXPERIMENTAL=1）由框架的 [[schedule]] 接管，这里不重复启动。
+const __SELF_TIMER = !process.env.QIXIN_EXPERIMENTAL
 function __runTask(task) {
+  if (!__SELF_TIMER) return
   Promise.resolve(app.run_task({ task })).catch((e) => {
     host.log('warn', `定时 ${task} 执行失败: ${e && e.message ? e.message : e}`)
   })
 }
 let __ncmTimer = null
 function __scheduleNcmDaily() {
+  if (!__SELF_TIMER) return
   if (__ncmTimer) clearTimeout(__ncmTimer)
   const h = Number(settings.hour ?? 0), m = Number(settings.minute ?? 0)
   const now = new Date()
@@ -114,4 +118,4 @@ function __scheduleNcmDaily() {
   }, next.getTime() - now.getTime())
 }
 __scheduleNcmDaily()
-host.log('info', '自管定时已启动')
+if (__SELF_TIMER) host.log('info', '发行版自管定时已启动')

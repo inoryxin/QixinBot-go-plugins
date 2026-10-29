@@ -18,7 +18,7 @@ const agentBase = () => `http://${String(settings.agentHost || '10.0.0.99:3097')
 
 function ownerIds() {
   return String(process.env.QIXIN_OWNER || '')
-    .split(/[,，\s]+/).map((x) => Number(x.trim())).filter((n) => Number.isFinite(n) && n > 0)
+    .split(/[|｜,，\s]+/).map((x) => Number(x.trim())).filter((n) => Number.isFinite(n) && n > 0)
 }
 function isOwner(session) {
   const owners = ownerIds()
@@ -159,7 +159,8 @@ async function sendScreenshot(session) {
 }
 
 async function dshServices(withWeb) {
-  return agent(`/ensure-dsh?web=${withWeb ? '1' : '0'}`, { method: 'POST', timeout: withWeb ? 60000 : 20000 })
+  // 管家侧最坏情况：等 DSH web 60s + 等 ACP 桥 20s，留足余量。
+  return agent(`/ensure-dsh?web=${withWeb ? '1' : '0'}`, { method: 'POST', timeout: withWeb ? 120000 : 20000 })
 }
 
 async function dshReady(withWeb) {
@@ -260,10 +261,12 @@ async function allSessions() {
     .map((item) => {
       const id = normalizeId(item.sessionId)
       const dsh = dshTitles.get(id) || {}
+      // 标题以 DSH 的为准（网页端起的名）；本地标题只补缺，默认会话保留「大肥鱼」
+      const title = id === defaultId && local[id]?.title ? local[id].title : (dsh.title || local[id]?.title || '')
       return {
         id,
         raw: item.sessionId,
-        title: local[id]?.title || dsh.title || '',
+        title,
         workspace: dsh.workspace || '',
         usedAt: local[id]?.lastUsedAt ?? dsh.lastPromptAt ?? 0,
       }
@@ -357,54 +360,60 @@ async function openDshWeb(url) {
   try { await agent(`/open?url=${encodeURIComponent(target)}`, { method: 'POST', timeout: 10000 }) } catch (e) { host.log('warn', `打开 DSH 网页失败: ${e.message}`) }
 }
 
-async function enter(session) {
-  if (mode === 'dsh') return host.reply(chatOf(session), '已经在大肥鱼模式了，直接说事就行。')
-  if (mode === 'starting') return host.reply(chatOf(session), '正在启动，等我一下。')
+// 进入流程可能要好几分钟（HA 通电、等开机、切系统、冷启动 DSH），
+// 而宿主对 handle_message 有 30 秒硬超时，所以真正的工作放到后台任务里跑，
+// 这里只做同步的状态判断和占位回复。
+function enter(session) {
+  if (mode === 'dsh') return host.reply(chatOf(session), '已经在大肥鱼模式了，直接说事就行。').catch(() => {})
+  if (mode === 'starting') return host.reply(chatOf(session), '正在启动，等我一下。').catch(() => {})
   mode = 'starting'
-  busy = true
-  await host.sharedSet('pc.dsh_active', true)
-  try {
-    await host.reply(chatOf(session), '大肥鱼模式启动中，先检查你电脑开没开…')
-    await ensureWindows(session)
-    host.log('info', 'pc enter: windows ready')
-    await host.reply(chatOf(session), '正在连接 DSH…')
-    const svc = await dshReady(true)
-    host.log('info', `pc enter: dshReady bridge=${svc.bridge?.ready} web=${svc.web?.ready}`)
-    if (!svc.bridge?.ready) throw new Error('ACP 桥没起来')
-    const state = await readState()
-    let id = ''
-    let defaultId = state.defaultSessionId || ''
-    if (defaultId) {
-      let last
-      for (let attempt = 0; attempt < 3 && !id; attempt++) {
-        try { id = await connectAcp(defaultId) }
-        catch (e) { last = e; await sleep(2000) }
+  return host.background(session, '进入大肥鱼模式', async () => {
+    busy = true
+    try {
+      await host.reply(chatOf(session), '大肥鱼模式启动中，先检查你电脑开没开…')
+      await ensureWindows(session)
+      host.log('info', 'pc enter: windows ready')
+      await host.reply(chatOf(session), '正在连接 DSH…')
+      const svc = await dshReady(true)
+      host.log('info', `pc enter: dshReady bridge=${svc.bridge?.ready} web=${svc.web?.ready}`)
+      if (!svc.bridge?.ready) throw new Error('ACP 桥没起来')
+      const state = await readState()
+      let id = ''
+      let defaultId = state.defaultSessionId || ''
+      if (defaultId) {
+        let last
+        for (let attempt = 0; attempt < 3 && !id; attempt++) {
+          try { id = await connectAcp(defaultId) }
+          catch (e) { last = e; await sleep(2000) }
+        }
+        if (!id) throw new Error(`默认大肥鱼会话恢复失败：${last?.message || '未知错误'}`)
+      } else {
+        id = await connectAcp('')
+        defaultId = id
       }
-      if (!id) throw new Error(`默认大肥鱼会话恢复失败：${last?.message || '未知错误'}`)
-    } else {
-      id = await connectAcp('')
-      defaultId = id
-    }
-    host.log('info', `pc enter: acp id=${String(id).slice(0,8)} default=${String(defaultId).slice(0,8)}`)
-    await saveState({ active: true, sessionId: id, defaultSessionId: defaultId })
-    await setSessionTitle(defaultId, '大肥鱼')
-    await host.sharedSet('pc.dsh_active', true)
-    mode = 'dsh'
-    await openDshWeb(svc.web?.url)
-    const title = (await loadLocalTitles())[normalizeId(id)]?.title || '大肥鱼'
-    await host.reply(chatOf(session), `大肥鱼模式已接管，当前会话：${title}（${String(id).slice(0, 8)}）。\n发「新会话」「会话列表」「切换 n」；发「退出大肥鱼模式」还给我。`)
-  } catch (e) {
-    mode = 'idle'
-    await host.sharedSet('pc.dsh_active', false)
-    try { acp?.close() } catch {}
-    acp = null
-    await host.reply(chatOf(session), `进入大肥鱼模式失败：${e.message}`)
-  } finally { busy = false }
+      host.log('info', `pc enter: acp id=${String(id).slice(0,8)} default=${String(defaultId).slice(0,8)}`)
+      await saveState({ active: true, sessionId: id, defaultSessionId: defaultId })
+      await setSessionTitle(defaultId, '大肥鱼')
+      await host.sharedSet('pc.dsh_active', true)
+      mode = 'dsh'
+      await openDshWeb(svc.web?.url)
+      const title = (await loadLocalTitles())[normalizeId(id)]?.title || '大肥鱼'
+      await host.reply(chatOf(session), `大肥鱼模式已接管，当前会话：${title}（${String(id).slice(0, 8)}）。\n发「新会话」「会话列表」「切换 n」；发「退出大肥鱼模式」还给我。`)
+    } catch (e) {
+      mode = 'idle'
+      await host.sharedSet('pc.dsh_active', false)
+      try { acp?.close() } catch {}
+      acp = null
+      await host.reply(chatOf(session), `进入大肥鱼模式失败：${e.message}`)
+    } finally { busy = false }
+  })
 }
 
 async function exit(session, shutdown) {
   mode = 'idle'
   await host.sharedSet('pc.dsh_active', false)
+  // 让桥杀掉 ACP 运行时、清掉活跃会话，把写句柄还给 DSH 网页（不然网页端打开会报"会话已被占用"）
+  try { if (acp?.connected) acp.write({ control: 'release' }) } catch {}
   try { acp?.close() } catch {}
   acp = null
   sessionId = ''
@@ -471,6 +480,39 @@ async function sendLocalImages(session, text) {
   }
 }
 
+// 关掉 DSH web 进程：网页里开着哪条会话，哪条会话的写句柄就被 web 占着，QQ 这边拿不到。
+async function releaseDshWeb() {
+  await agent('/shell', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ command: 'Get-NetTCPConnection -LocalPort 3080 -State Listen -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }' }),
+    timeout: 30000,
+  }).catch(() => {})
+}
+
+// 带自愈的 prompt：unknown session 先重载会话；还不行就重启 DSH 网页腾出写句柄再试。
+async function dshPrompt(sessionId, prompt) {
+  const timeout = Number(settings.promptTimeoutMs) || 7200000
+  try {
+    return await acp.prompt(sessionId, prompt, timeout)
+  } catch (e) {
+    if (!/unknown session/i.test(e.message)) throw e
+    host.log('info', `DSH 不认识会话 ${String(sessionId).slice(0, 8)}，重载后重试`)
+    await acp.resumeSession(sessionId, settings.workspace).catch(() => {})
+    try {
+      return await acp.prompt(sessionId, prompt, timeout)
+    } catch (e2) {
+      if (!/unknown session/i.test(e2.message)) throw e2
+      host.log('info', '会话仍不可用，疑似被 DSH 网页占用写句柄，重启网页后重试')
+      await releaseDshWeb()
+      await acp.resumeSession(sessionId, settings.workspace).catch(() => {})
+      const r = await acp.prompt(sessionId, prompt, timeout)
+      host.background(null, '恢复 DSH 网页', () => dshServices(true).catch(() => {}))
+      return r
+    }
+  }
+}
+
 async function relay(session, text) {
   if (!acp?.connected) {
     try { await ensureAcp() } catch (e) { return host.reply(chatOf(session), `DSH 没连上：${e.message}`) }
@@ -485,7 +527,7 @@ async function relay(session, text) {
   try {
     const imagePaths = await uploadIncoming(session)
     await touchTitle(sessionId, text)
-    const r = await acp.prompt(sessionId, relayPrompt(text, imagePaths), Number(settings.promptTimeoutMs) || 7200000)
+    const r = await dshPrompt(sessionId, relayPrompt(text, imagePaths))
     await host.reply(chatOf(session), r.text || `（DSH 没有说话，stopReason=${r.stopReason}）`)
     await sendLocalImages(session, r.text)
   } catch (e) {
@@ -601,7 +643,8 @@ serve({
 
       if (mode !== 'dsh') return { handled: false }
       if (session.chat_type === 'group') return { handled: false }
-      await relay(session, text)
+      // DSH 的回复可能要几分钟到几小时，同样丢进后台任务。
+      host.background(session, '转发给大肥鱼', () => relay(session, text))
       return { handled: true }
     } catch (e) {
       host.log('error', `电脑管家: ${e.message}`)

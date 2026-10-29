@@ -429,7 +429,7 @@ async function optionalCapability(name, args = {}) {
 // 可选依赖：好感度插件装了就用，没装返回 null
 function ownerIds() {
   return String(process.env.QIXIN_OWNER || '')
-    .split(/[,，\s]+/)
+    .split(/[|｜,，\s]+/)
     .map((x) => Number(x.trim()))
     .filter((n) => Number.isFinite(n) && n > 0)
 }
@@ -1127,7 +1127,7 @@ function shouldTrigger(session) {
 
   // 水群群号白名单（留空 = 全部）
   const allow = String(settings.water_groups || '')
-    .split(/[,，|\s]+/).map((x) => x.trim()).filter(Boolean).map(Number)
+    .split(/[|｜,，\s]+/).map((x) => x.trim()).filter(Boolean).map(Number)
   if (allow.length && !allow.includes(Number(session.chat_id))) return false
 
   const key = session.chat_type + ':' + session.chat_id

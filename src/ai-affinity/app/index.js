@@ -79,7 +79,7 @@ async function topList(limit = 10) {
 
 function masterList() {
   return String(settings.master_qq || process.env.QIXIN_OWNER || '')
-    .split(/[,，\s]+/)
+    .split(/[|｜,，\s]+/)
     .map((x) => Number(x.trim()))
     .filter((n) => Number.isFinite(n) && n > 0)
 }

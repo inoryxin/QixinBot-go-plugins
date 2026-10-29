@@ -7,11 +7,28 @@ description = "模拟一个人一天在干什么，给 AI 聊天提供当前状�
 
 # 服务插件：不接消息，只提供能力和工具
 kind = "service"
-provides = ["life.now@1", "life.set@1"]
+provides = ["life.now@1", "life.set@1", "life.plan@1"]
 
 [[capability]]
 name = "life.now"
 description = "查询她此刻在做什么、心情和精力"
+
+[[capability]]
+name = "life.plan"
+description = "查看/保存/生成某天的时间表"
+
+[capability.parameters]
+type = "object"
+
+[capability.parameters.properties.action]
+type = "string"
+enum = ["get", "save", "generate", "clear"]
+
+[capability.parameters.properties.date]
+type = "string"
+
+[capability.parameters.properties.items]
+type = "array"
 
 [[capability]]
 name = "life.set"
@@ -24,8 +41,32 @@ type = "string"
 type = "number"
 
 [[tools]]
+name = "life_plan"
+description = "查看她今天、明天或后天的日程。用户问「明天干嘛」「周末有什么安排」时调用。"
+
+[tools.parameters]
+type = "object"
+
+[tools.parameters.properties.date]
+type = "string"
+
+[[tools]]
 name = "life_now"
 description = "查看对方（这个 AI）现在在做什么、心情如何。用户问「你在干嘛」「忙吗」时调用。"
+
+[[settings]]
+key = "occupation"
+label = "职业"
+type = "string"
+default = "上班族"
+hint = "日程会按职业生成；改职业会清空旧日程并重新生成"
+
+[[settings]]
+key = "work_days"
+label = "工作日（1-5，7=周日）"
+type = "string"
+default = "1-5"
+hint = "例如 1-5 表示周一到周五上班；周末自动按休息日安排"
 
 [[settings]]
 key = "wake_hour"

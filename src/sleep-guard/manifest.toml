@@ -62,9 +62,9 @@ default = "https://home.inory.xin:9010/query"
 
 [[settings]]
 key = "deviceKeywords"
-label = "设备关键词（逗号分隔）"
+label = "设备关键词（用 | 分隔）"
 type = "string"
-default = "📱,💻"
+default = "📱|💻"
 
 [[settings]]
 key = "timeoutMs"

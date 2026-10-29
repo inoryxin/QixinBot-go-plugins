@@ -56,7 +56,7 @@ async function fetchStatus() {
 
 function keywords() {
   return String(settings.deviceKeywords || '📱,💻')
-    .split(/[,，\s]+/).map((s) => s.trim()).filter(Boolean)
+    .split(/[|｜,，\s]+/).map((s) => s.trim()).filter(Boolean)
 }
 
 function awakeDevices(devices) {

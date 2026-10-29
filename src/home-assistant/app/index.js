@@ -22,7 +22,7 @@ function options() {
     token: settings.token || '',
     timeoutMs: Number(settings.timeoutMs) || 8000,
     domains: String(settings.domains || 'light,switch,fan,climate,cover')
-      .split(/[,\s]+/)
+      .split(/[|｜,，\s]+/)
       .map((x) => x.trim())
       .filter(Boolean),
     aliases,

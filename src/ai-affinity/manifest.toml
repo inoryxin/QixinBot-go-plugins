@@ -104,7 +104,7 @@ key = "master_qq"
 label = "主人 QQ（好感永远满）"
 type = "string"
 default = ""
-hint = "逗号分隔；留空 = 使用框架 [owner] users（QIXIN_OWNER）"
+hint = "用 | 分隔；留空 = 使用框架 [owner] users（QIXIN_OWNER）"
 
 [[settings]]
 key = "judge_enabled"

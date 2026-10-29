@@ -78,12 +78,12 @@ function render(st) {
 }
 
 function triggerRegex() {
-  const aliases = String(settings.aliases || '').split(/[,，]/).map((s) => s.trim()).filter(Boolean)
-  const actions = String(settings.actions || '').split(/[,，]/).map((s) => s.trim()).filter(Boolean)
+  const aliases = String(settings.aliases || '').split(/[|｜,，\s]+/).map((s) => s.trim()).filter(Boolean)
+  const actions = String(settings.actions || '').split(/[|｜,，\s]+/).map((s) => s.trim()).filter(Boolean)
   const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   const name = aliases.length ? `(?:${aliases.map(esc).join('|')})` : '.+?'
   const action = actions.length ? `(?:${actions.map(esc).join('|')})` : '(?:在干嘛|状态)'
-  return new RegExp(`^(?:视奸\\s*${name}?\\s*|${name}\\s*[（(]?\\s*${action}\\s*[）)]?\\s*[?？!！]*)$`, 'iu')
+  return new RegExp(`^(?:视奸\\s*${name}?\\s*[?？!！]*|${name}\\s*[（(]?\\s*${action}\\s*[呢啊呀吧]*\\s*[）)]?\\s*[?？!！]*)$`, 'iu')
 }
 
 function chatOf(session) {

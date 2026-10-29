@@ -72,7 +72,7 @@ max = 60000
 key = "domains"
 label = "可控设备类型"
 type = "string"
-default = "light,switch,fan,climate,cover"
+default = "light|switch|fan|climate|cover"
 
 [[settings]]
 key = "aliasesJson"
