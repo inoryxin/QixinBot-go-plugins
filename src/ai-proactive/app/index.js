@@ -58,6 +58,24 @@ async function saveState(chatID, st) {
   await host.storage.set(`pc:${chatID}`, st)
 }
 
+// 协议端当前还在的群。缓存 5 分钟，失败返回 null（不阻塞旧逻辑）。
+let liveGroupsCache = { at: 0, ids: null }
+async function liveGroupIDs() {
+  if (liveGroupsCache.ids && Date.now() - liveGroupsCache.at < 5 * 60 * 1000) {
+    return liveGroupsCache.ids
+  }
+  try {
+    const r = await host.call_onebot('get_group_list', {})
+    const arr = Array.isArray(r) ? r : (Array.isArray(r?.data) ? r.data : [])
+    const ids = new Set(arr.map((g) => Number(g.group_id)).filter((n) => Number.isFinite(n) && n > 0))
+    liveGroupsCache = { at: Date.now(), ids }
+    return ids
+  } catch (e) {
+    host.log('warn', `获取群列表失败，本轮不额外过滤: ${e.message}`)
+    return null
+  }
+}
+
 // 冷场的群：按最后一条消息排序
 async function silentGroups(minSilenceMin) {
   const cutoff = nowSec() - Math.max(1, minSilenceMin) * 60
@@ -146,6 +164,9 @@ const app = {
     const allow = allowList()
     let groups = await silentGroups(minSilence)
     if (allow.length) groups = groups.filter((g) => allow.includes(Number(g.chat_id)))
+    // 协议端群列表兜底：已经退出的群不再主动发言。
+    const live = await liveGroupIDs()
+    if (live) groups = groups.filter((g) => live.has(Number(g.chat_id)))
 
     const spoken = []
     for (const g of groups) {
