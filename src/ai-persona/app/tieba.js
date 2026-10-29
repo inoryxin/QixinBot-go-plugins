@@ -320,7 +320,7 @@ export function createTieba({ dataDir, getSettings, log = () => {}, warn = () =>
   function styleSection(chatKey) {
     // 主人 QQ 由框架注入（权限页「主人 QQ」），贴吧模式里绝对不许骂
     const owners = String(process.env.QIXIN_OWNER || '')
-      .split(',')
+      .split(/[|｜,，\s]+/)
       .map((x) => x.trim())
       .filter(Boolean)
     const ownerLine = owners.length

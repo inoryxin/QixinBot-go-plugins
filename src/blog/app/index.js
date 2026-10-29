@@ -217,8 +217,8 @@ serve({
 
   async handle_message({ session }) {
     if (settings.enabled === false || settings.enabled === 'false') return { handled: false }
-    const owner = String(settings.ownerQQ || process.env.QIXIN_OWNER || '').trim()
-    if (owner && session.role !== 'owner' && String(session.user_id) !== owner) return { handled: false }
+    const owners = String(settings.ownerQQ || process.env.QIXIN_OWNER || '').split(/[|｜,，\s]+/).map((x) => x.trim()).filter(Boolean)
+    if (owners.length && session.role !== 'owner' && !owners.includes(String(session.user_id))) return { handled: false }
 
     const text = String(session.text || '').trim()
     const cmd = /^\/?(?:blog|博客)\s*([\s\S]*)$/i.exec(text)
