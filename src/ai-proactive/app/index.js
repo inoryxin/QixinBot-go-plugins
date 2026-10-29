@@ -31,7 +31,7 @@ async function db(op, sql, params = []) {
 
 function allowList() {
   return String(settings.allow_groups || '')
-    .split(/[,，\s]+/)
+    .split(/[,，|｜\s]+/)
     .map((x) => Number(x.trim()))
     .filter((n) => Number.isFinite(n) && n > 0)
 }
