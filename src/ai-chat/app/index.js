@@ -1404,14 +1404,14 @@ async function maybeSendSticker(chat, text) {
 
 async function respond(session, userText, extraPrompt, images) {
   const t0 = Date.now()
-  host.log('info', `respond 开始 images=${(images || []).length}`)
+  host.log('debug', `respond 开始 images=${(images || []).length}`)
 
   const messages = await buildMessages(session, userText, extraPrompt, images)
-  host.log('info', `respond 上下文就绪 msgs=${messages.length} 耗时=${Date.now() - t0}`)
+  host.log('debug', `respond 上下文就绪 msgs=${messages.length} 耗时=${Date.now() - t0}`)
 
   const tools = await loadToolDefs(session, userText)
   let r = await askLLM(messages, tools)
-  host.log('info', `respond LLM ${r.ok ? 'ok' : 'fail:' + r.error} tools=${tools.length} 耗时=${Date.now() - t0}`)
+  host.log('debug', `respond LLM ${r.ok ? 'ok' : 'fail:' + r.error} tools=${tools.length} 耗时=${Date.now() - t0}`)
   if (!r.ok) return { ok: false, error: r.error }
 
   // 模型要调工具：执行后把结果喂回去，最多循环 3 轮
@@ -1513,14 +1513,14 @@ serve({
     host.log('debug', `收到 chat=${session.chat_type} text=${JSON.stringify(text)} segs=[${segTypes}] images=${imgCount}`)
     if (!text && imgCount === 0) return { handled: false }
 
-    host.log('info', 'H1 开始 ensureReady')
+    host.log('debug', 'H1 开始 ensureReady')
     try {
       await ensureReady()
     } catch (err) {
       host.log('error', '初始化失败: ' + err.message)
       return { handled: false }
     }
-    host.log('info', 'H2 ensureReady 完成')
+    host.log('debug', 'H2 ensureReady 完成')
 
     const imgsForStore = imageURLsOf(session)
     const storeText = text || (imgsForStore.length ? '[图片]' : '')
@@ -1551,7 +1551,7 @@ serve({
     // 纯图片群消息：不水群、不回复，但可以按偷图概率静默收藏
     // 有些协议端会把纯图消息的 text 填成 "[图片]" / "[动画表情]"，不能只看 text 是否为空
     const trig = shouldTrigger(session)
-    host.log('info', 'H4 shouldTrigger=' + trig)
+    host.log('debug', 'H4 shouldTrigger=' + trig)
     if (!trig) return { handled: false }
 
     const cleaned = text.replace(/^@\S+\s*/, '').trim() || text
@@ -1564,11 +1564,11 @@ serve({
       }
     }
     lastTrigger.set(session.chat_type + ':' + session.chat_id, Date.now())
-    host.log('info', 'H5 进入 respond images=' + images.length)
+    host.log('debug', 'H5 进入 respond images=' + images.length)
 
     try {
       await respond(session, cleaned, null, images)
-      host.log('info', 'H6 respond 返回')
+      host.log('debug', 'H6 respond 返回')
     } catch (err) {
       host.log('error', '回复失败: ' + err.message)
     }
