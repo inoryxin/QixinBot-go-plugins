@@ -1639,6 +1639,7 @@ serve({
 
 async function toolChat(args) {
   const { text, chat_type, chat_id, user_id, nickname, prompt, account, images } = args || {}
+  const userText = String(text || '')
   const imgsArg = Array.isArray(images) ? images : []
   if (!text && imgsArg.length === 0) return { ok: false, error: '需要 text 或 images' }
 

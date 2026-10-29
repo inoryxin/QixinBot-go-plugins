@@ -91,7 +91,11 @@ async function speak(chatID, reason) {
     text: '（没人说话）',
     prompt,
   })
-  if (!r?.ok) return { ok: false, error: r?.error || '生成失败' }
+  if (!r?.ok) {
+    chatReady = null
+    return { ok: false, error: r?.error || '生成失败' }
+  }
+  chatReady = true
   return { ok: true, text: r.data?.text || '' }
 }
 
@@ -119,18 +123,10 @@ async function trySpeak(chatID, reason, force = false) {
 const app = {
   async initialize({ settings: s }) {
     settings = s || {}
-    // 软依赖：没有 AI 聊天插件也能装着，但不会说话。
-    // 明确说出来，别让用户以为"开了没反应"。
-    try {
-      const r = await host.capability('ai.chat', { text: 'ping', chat_type: 'private', chat_id: 0 })
-      chatReady = !!r
-    } catch {
-      chatReady = false
-    }
-    if (!chatReady) {
-      host.log('warn', '没找到 AI 聊天插件（ai-chat）：主动发言不会工作，装上后重启本插件即可')
-    }
-    host.log('info', `主动发言已加载（${settings.enabled ? '启用' : '关闭'}）`)
+    // 软依赖：不在启动时探测 ai.chat，避免 ai-chat 还没就绪时
+    // 把 chatReady 永久缓存成 false；真正发言时按需调用，失败只跳过。
+    chatReady = null
+    host.log('info', `主动发言已加载（${settings.enabled ? '启用' : '关闭'}），AI 聊天按需检测`)
     return { api_version: '1.0' }
   },
 
@@ -142,7 +138,8 @@ const app = {
   async run_task({ task }) {
     if (task !== 'tick') return {}
     if (!settings.enabled) return { skipped: '未启用' }
-    if (chatReady === false) return { skipped: '没有 AI 聊天插件（ai-chat）' }
+    // 不缓存“没装”：每次 tick 由 trySpeak 按需调用 ai.chat，失败只跳过这一轮
+
     if (inQuietHours()) return { skipped: '免打扰时段' }
 
     const minSilence = Number(settings.min_silence_min) || 45
@@ -183,7 +180,7 @@ const app = {
     const st = await stateOf(session.chat_id)
     const lines = [
       `主动发言：${settings.enabled ? '开' : '关'}`,
-      `AI 聊天插件：${chatReady === false ? '❌ 没装（不会说话）' : '✅ 已就绪'}`,
+      `AI 聊天插件：${chatReady === true ? '✅ 已就绪' : '⏳ 按需检测'}`,
       `冷场阈值：${settings.min_silence_min || 45} 分钟`,
       `概率：${settings.chance_pct || 30}% / 每次检查`,
       `免打扰：${settings.quiet_start ?? 0}:00 - ${settings.quiet_end ?? 8}:00`,
@@ -204,11 +201,14 @@ function chatOf(session) {
   }
 }
 
-// ---- 插件自管定时 ----
+// ---- 插件自管定时（发行版）----
+// 开发线（QIXIN_EXPERIMENTAL=1）由框架的 [[schedule]] 接管，这里不重复启动。
+const __SELF_TIMER = !process.env.QIXIN_EXPERIMENTAL
 function __runTask(task) {
+  if (!__SELF_TIMER) return
   Promise.resolve(app.run_task({ task })).catch((e) => {
     host.log('warn', `定时 ${task} 执行失败: ${e && e.message ? e.message : e}`)
   })
 }
-setInterval(() => __runTask('tick'), 10 * 60 * 1000)
-host.log('info', '自管定时已启动')
+__SELF_TIMER && setInterval(() => __runTask('tick'), 10 * 60 * 1000)
+if (__SELF_TIMER) host.log('info', '发行版自管定时已启动')
