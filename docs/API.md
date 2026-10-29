@@ -534,6 +534,7 @@ OneBot 11 原生格式，不重新发明：
 | `/connect` | 连接设置 |
 | `/permissions` | 命令权限 |
 | `/plugins` | 插件管理 |
+| `/cohost` | cohost 池管理：新建/删除池、手动分配插件；分配后立即按池重载 |
 | `/help-settings` | 指令显示 |
 | `/tools` | 工具 |
 | `/logs` | 日志 |
@@ -541,7 +542,8 @@ OneBot 11 原生格式，不重新发明：
 | `/chat` | 聊天（人工发消息、看最近消息） |
 | `/plugin/<id>/` | 插件详情（设置 + 指令 + 扩展） |
 | `/ui/qixin-form.js` | 通用表单组件 |
-| `/healthz` | 健康检查（不需要登录） |
+| `/healthz` | 进程存活检查（不需要登录） |
+| `/readyz` | 就绪探针（不需要登录）：账号连接、插件异常计数（不回插件明细）；未就绪返回 503 |
 
 ### 5.2 数据接口
 
@@ -564,8 +566,14 @@ OneBot 11 原生格式，不重新发明：
 | POST | `/api/plugins/{id}/enable` | 启用 |
 | POST | `/api/plugins/{id}/disable` | 禁用 |
 | POST | `/api/plugins/{id}/delete` | 删除（包 + 运行区） |
+| GET | `/api/cohost/pools` | 池、成员、PID/RSS、熔断状态 |
+| POST | `/api/cohost/pools` | 新建池（`name` / `max_members`，上限默认 12，最大 64） |
+| POST | `/api/cohost/pools/update` | 改名/改上限（`id` / `name` / `max_members`；缩容不能低于当前成员数） |
+| POST | `/api/cohost/pools/delete` | 删除空池（`id`） |
+| POST | `/api/cohost/assign` | 插件移入池（`plugin_id` / `pool_id`，空 = quarantine；立即重载并按池运行） |
 | GET | `/api/plugin/{id}/settings` | 返回 `{schema, values}` |
 | POST | `/api/plugin/{id}/settings` | 保存并推给插件 |
+| POST | `/api/plugin/{id}/settings/restore` | 从轮转备份恢复（`index` 0..3） |
 | POST | `/api/connect` | 保存连接配置（重启生效） |
 | POST | `/api/password` | 改控制台登录密码（写回 config.toml） |
 | POST | `/api/permissions` | 保存插件级权限 |
