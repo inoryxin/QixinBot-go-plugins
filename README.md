@@ -2,7 +2,7 @@
 
 **所有官方插件**的源码和签名产物，加上**插件开发手册**。
 
-配套框架：[QixinBot-go](http://10.0.0.140:30008/anzu/QixinBot-go)（源码）、[QixinBot-release](http://10.0.0.140:30008/anzu/QixinBot-release)（发行版）。
+配套框架：[QixinBot-release](http://10.0.0.140:30008/anzu/QixinBot-release)（发行版与文档中心）。
 
 ---
 
@@ -12,7 +12,7 @@
 src/       每个插件一个目录（源码）
 packages/  签名好的 .anzu（直接丢进框架的 plugins/）
 keys/      签名公钥（验证用；私钥不在仓库里）
-docs/      插件开发手册
+docs/      PC 管家与协议端文档
 ```
 
 ## 快速开始：装一个插件
@@ -42,7 +42,8 @@ cd my-plugin
 #    → 聊天 → 🧪 虚拟群 → 发消息看插件怎么回
 ```
 
-**详细手册见 [docs/PLUGIN.md](docs/PLUGIN.md)**（和框架仓库的同一份，随版本同步）。
+**详细手册见 Wiki「[插件开发手册](http://10.0.0.140:30008/anzu/QixinBot-release/wiki/插件开发手册)」**
+（开头就是开发环境准备；同步从框架源文件更新）。
 
 ---
 
