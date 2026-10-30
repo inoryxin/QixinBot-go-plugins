@@ -1,5 +1,3 @@
-<p align="center"><img src="http://10.0.0.140:30008/anzu/QixinBot-release/raw/branch/main/branding/qixinbot-logo-128.png" width="84" alt="QixinBot"></p>
-
 # QixinBot 插件仓库
 
 **所有官方插件**的源码和签名产物，加上**插件开发手册**。
