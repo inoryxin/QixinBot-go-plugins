@@ -36,8 +36,8 @@ cd my-plugin
 ..\bin\qixinpack.exe pack my-plugin -out my-plugin.anzu
 ```
 
-完整开发手册：[插件开发手册](http://10.0.0.123:8090/guide/plugin-manual.html) ·
-[快速开始](http://10.0.0.123:8090/guide/plugin-quickstart.html)。
+完整开发手册：[插件开发手册](https://github.com/inoryxin/QixinBot-go-plugins/wiki/%E6%8F%92%E4%BB%B6%E5%BC%80%E5%8F%91%E6%89%8B%E5%86%8C) ·
+[快速开始](https://github.com/inoryxin/QixinBot-go-plugins/wiki/%E6%8F%92%E4%BB%B6%E5%BC%80%E5%8F%91-%E5%BF%AB%E9%80%9F%E5%BC%80%E5%A7%8B)。
 
 ## 提交你的插件
 
