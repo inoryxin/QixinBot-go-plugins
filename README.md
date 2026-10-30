@@ -1,10 +1,10 @@
-<p align="center"><img src="/inoryxin/QixinBot-go/raw/branch/main/branding/logo-128.png" width="84" alt="QixinBot"></p>
+<p align="center"><img src="https://github.com/inoryxin/QixinBot-go/raw/main/branding/logo-128.png" width="84" alt="QixinBot"></p>
 
 # QixinBot 插件仓库
 
 **所有官方插件**的源码和签名产物，加上**插件开发手册**。
 
-配套框架：[QixinBot-go](/inoryxin/QixinBot-go)（框架源码 · 发行包 · 文档中心）。
+配套框架：[QixinBot-go](https://github.com/inoryxin/QixinBot-go)（框架源码 · 发行包 · 文档中心）。
 
 ---
 
@@ -44,7 +44,7 @@ cd my-plugin
 #    → 聊天 → 🧪 虚拟群 → 发消息看插件怎么回
 ```
 
-**详细手册见 Wiki「[插件开发手册](/inoryxin/QixinBot-go/wiki/插件开发手册)」**
+**详细手册见 Wiki「[插件开发手册](http://10.0.0.123:8090/guide/plugin-manual.html)」**
 （开头就是开发环境准备；同步从框架源文件更新）。
 
 ---

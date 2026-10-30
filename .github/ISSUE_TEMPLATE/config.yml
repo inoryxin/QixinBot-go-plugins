@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 框架问题反馈
+    url: https://github.com/inoryxin/QixinBot-go/issues
+    about: 框架本身的 bug / 功能建议请到框架仓库

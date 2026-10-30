@@ -1,0 +1,97 @@
+name: 插件收录申请
+description: 提交第三方插件，审核通过后展示在官网插件目录
+title: "[插件收录] 插件中文名"
+labels: ["插件收录"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        收录后你的插件会出现在官网插件目录（第三方分区）。**只收签名公钥/指纹，不收私钥**——
+        私钥请留在你自己手里，框架安装时会校验签名。
+  - type: input
+    id: name
+    attributes:
+      label: 插件中文名
+      description: 展示在卡片上的名字
+    validations:
+      required: true
+  - type: input
+    id: plugin-id
+    attributes:
+      label: 插件 ID
+      description: .anzu 包的 manifest id，例如 weather
+    validations:
+      required: true
+  - type: textarea
+    id: summary
+    attributes:
+      label: 一句话简介
+      description: 展示在卡片上，100 字以内
+    validations:
+      required: true
+  - type: textarea
+    id: details
+    attributes:
+      label: 详细说明
+      description: 功能、指令用法、注意事项（可选）
+  - type: dropdown
+    id: language
+    attributes:
+      label: 语言
+      options:
+        - Node.js
+        - Python
+        - 其他
+    validations:
+      required: true
+  - type: input
+    id: deps
+    attributes:
+      label: 运行依赖
+      description: 例如 Python 运行时 / Pillow / canvas；无依赖留空
+  - type: input
+    id: repo
+    attributes:
+      label: 源码仓库地址
+    validations:
+      required: true
+  - type: input
+    id: download
+    attributes:
+      label: .anzu 下载直链
+      description: 含版本号的直链，能直接下载
+    validations:
+      required: true
+  - type: textarea
+    id: pubkey
+    attributes:
+      label: 签名公钥或指纹
+      description: ed25519 公钥（qixinpack keygen 生成的 .pub 内容）或指纹
+    validations:
+      required: true
+  - type: dropdown
+    id: category
+    attributes:
+      label: 分类
+      options:
+        - AI 助手
+        - 娱乐互动
+        - 订阅推送
+        - 群聊管理
+        - 工具查询
+        - 设备管家
+        - 其他
+    validations:
+      required: true
+  - type: checkboxes
+    id: confirm
+    attributes:
+      label: 确认
+      options:
+        - label: 我提交的是签名公钥/指纹，不含私钥；插件不含凭据收集等恶意行为
+          required: true
+  - type: input
+    id: contact
+    attributes:
+      label: 联系方式
+      description: 可选；审核有疑问时联系你用
