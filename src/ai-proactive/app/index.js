@@ -65,7 +65,7 @@ async function liveGroupIDs() {
     return liveGroupsCache.ids
   }
   try {
-    const r = await host.call_onebot('get_group_list', {})
+    const r = await host.callOnebot('get_group_list', {})
     const arr = Array.isArray(r) ? r : (Array.isArray(r?.data) ? r.data : [])
     const ids = new Set(arr.map((g) => Number(g.group_id)).filter((n) => Number.isFinite(n) && n > 0))
     liveGroupsCache = { at: Date.now(), ids }
