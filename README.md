@@ -5,6 +5,8 @@
 QixinBot 官方插件的**源码**（`src/`）与**签名 `.anzu` 包**（`packages/`）。配套框架：
 [QixinBot-go](https://github.com/inoryxin/QixinBot-go)。
 
+**官网 / 插件商店**：[https://bot.inory.xin](https://bot.inory.xin)（在线浏览全部插件、一键下载 `.anzu`）
+
 每个插件的**说明文档在自己目录里**（`src/<插件>/README.md`），功能、指令、注意事项都在那里。
 
 ## 装一个插件
