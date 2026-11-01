@@ -1,0 +1,30 @@
+name: 审核通过 → 自动上架
+
+on:
+  issues:
+    types: [labeled]
+
+jobs:
+  approve:
+    if: github.event.label.name == '已通过'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # 官网仓库（registry 在里面），用 WEBSITE_TOKEN 推送
+      - uses: actions/checkout@v4
+        with:
+          repository: inoryxin/QixinBot-website
+          token: ${{ secrets.WEBSITE_TOKEN }}
+          path: website
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: 审查并上架
+        working-directory: website
+        env:
+          GITHUB_TOKEN: ${{ secrets.WEBSITE_TOKEN }}
+          GITEA_PUSH_URL: ${{ secrets.GITEA_PUSH_URL }}
+        run: node tools/approve-issue.mjs --issue ${{ github.event.issue.number }} --repo ${{ github.repository }} --auto
