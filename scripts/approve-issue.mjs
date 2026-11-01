@@ -128,12 +128,9 @@ git(`git commit -m "商店上架第三方插件 ${entry.name}(${entry.id})，审
 git(`git push`)
 console.log('✓ registry 已推送')
 
-if (hook) {
-  execSync(`curl -s -m 30 -X POST "${hook}"`, { stdio: 'pipe' })
-  console.log('✓ 已触发官网重建')
-} else {
-  console.log('⚠ 未配置 NETLIFY_HOOK，官网未触发重建')
-}
+// 清 jsDelivr 缓存：官网商店页运行时拉取 registry，清完即热更新（无需重建）
+execSync(`curl -s -m 30 -X POST "https://purge.jsdelivr.net/gh/inoryxin/QixinBot-go-plugins/main/registry.json"`, { stdio: 'pipe' })
+console.log('✓ 已清除 jsDelivr 缓存，官网插件数据热更新')
 
 api('POST', `/issues/${num}/comments`, { body: `✅ 审核通过，已上架插件商店：${entry.name}（${entry.id}）。\n\n下架/更新请发新 Issue 或联系管理员。` })
 api('PATCH', `/issues/${num}`, { state: 'closed' })
