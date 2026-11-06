@@ -1,13 +1,13 @@
 id = "ai-persona"
 name = "人设"
-version = "1.1.10"
+version = "1.1.13"
 apiVersion = "1.x"
 exec = ["node", "app/index.js"]
 description = "管 AI 的系统提示词和人设：说谁、怎么说话、群聊/私聊各用哪套；含贴吧鱼模式（按群开关，切换后改用吧友口吻 + 语料库抽样）"
 
 # 不是 service：它要接 /人设 命令。
 # （service 插件在分发时被直接跳过，只能被别的插件调能力）
-provides = ["persona.render@1", "persona.manage@1", "persona.mode@1"]
+provides = ["persona.render@1", "persona.manage@1", "persona.mode@1", "core.dispatch@1"]
 
 [[capability]]
 name = "persona.render"
@@ -200,3 +200,19 @@ label = "不想被抽到的语料"
 type = "string"
 default = ""
 hint = "逗号或空格隔开，命中的语料不会被抽进提示词"
+
+[[capability]]
+name = "core.dispatch"
+description = "统一分发钩子：贴吧模式开着时可接管消息（自己生成回复并落独立记忆），也可临时覆盖门禁"
+
+[capability.parameters]
+type = "object"
+
+[capability.parameters.properties.text]
+type = "string"
+
+[capability.parameters.properties.chat_type]
+type = "string"
+
+[capability.parameters.properties.chat_id]
+type = "number"

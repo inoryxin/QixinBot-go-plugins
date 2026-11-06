@@ -321,6 +321,157 @@ async function manage(args) {
   throw new Error(`未知 action: ${action}`)
 }
 
+// ---------------------------------------------------------------- 统一接管的贴吧聊天
+// 分发钩子 core.dispatch 会让本插件在 ai-chat 之前拿到消息。
+// 贴吧模式开着时由这里直接生成回复、自己落记忆，ai-chat 完全不参与。
+
+function stripMeta(text) {
+  const META = /(内容已(经)?清理|已经清理干净|只保留|没必要把|作为(一个)?(AI|人工智能|语言模型)|请注意文明|文明用语|我不(能|会|便)|抱歉|不好意思|敏感|审核|过滤|净化|删(掉|除))/
+  const lines = String(text || '').split(/\r?\n/)
+  const out = []
+  for (const raw of lines) {
+    let line = raw.trim()
+    if (!line) continue
+    if (/^[（(][^）)]*[）)]$/.test(line)) continue
+    if (META.test(line)) {
+      line = line.replace(/[（(][^）)]*[）)]/g, '').trim()
+      if (!line || META.test(line)) continue
+    }
+    line = line.replace(/[（(][^）)]{0,60}[）)]/g, '').trim()
+    if (line) out.push(line)
+  }
+  const res = out.join('\n').trim()
+  return res.replace(/喵+(?=[\s。！？!?~～，,]|$)/g, '').trim()
+}
+
+const charCount = (s) => String(s || '').replace(/\s/g, '').length
+
+function tiebaOwners() {
+  return String(process.env.QIXIN_OWNER || '')
+    .split(',')
+    .map((x) => Number(String(x).trim()))
+    .filter((n) => Number.isFinite(n) && n > 0)
+}
+
+async function ensureTiebaTable() {
+  await db('exec', `CREATE TABLE IF NOT EXISTS ai_tieba_message (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    chat_type TEXT NOT NULL,
+    chat_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    role TEXT NOT NULL,
+    content TEXT NOT NULL,
+    ts INTEGER NOT NULL)`)
+}
+
+async function nickMap(ids) {
+  const uniq = [...new Set((ids || []).filter((x) => x && x > 0))]
+  const map = new Map()
+  if (!uniq.length) return map
+  const ph = uniq.map(() => '?').join(',')
+  const r = await db('all', `SELECT user_id, nickname FROM ai_user WHERE user_id IN (${ph})`, uniq)
+  for (const row of r.rows || []) map.set(row.user_id, row.nickname)
+  return map
+}
+
+async function historyFrom(table, session, limit) {
+  const r = await db('all',
+    `SELECT user_id, role, content FROM ${table} WHERE chat_type = ? AND chat_id = ? ORDER BY id DESC LIMIT ?`,
+    [session.chat_type, session.chat_id, limit])
+  const rows = (r.rows || []).reverse()
+  const names = await nickMap(rows.map((m) => m.user_id))
+  return rows.map((m) => (m.role === 'assistant'
+    ? { role: 'assistant', content: m.content }
+    : { role: 'user', content: `${names.get(m.user_id) || m.user_id}: ${m.content}` }))
+}
+
+async function dropObserved(session, text) {
+  try {
+    // 观察是异步 goroutine，落库可能比我们晚：延迟调用 + 清掉窗口内所有匹配副本
+    await db('exec', `DELETE FROM ai_message WHERE chat_type = ? AND chat_id = ? AND role = 'user' AND content = ? AND ts >= ?`,
+      [session.chat_type, session.chat_id, text, now() - 120])
+  } catch { /* 清理失败不影响回复 */ }
+}
+
+async function storeTurn(session, text, reply, normal) {
+  const table = normal ? 'ai_message' : 'ai_tieba_message'
+  const uid = Number(session.user_id) || 0
+  // 正常记忆（主人）：用户那句由 ai-chat 的 observe 写，这里只补回复，避免重复
+  if (!normal) {
+    await db('exec', `INSERT INTO ${table} (chat_type, chat_id, user_id, role, content, ts) VALUES (?,?,?,?,?,?)`,
+      [session.chat_type, session.chat_id, uid, 'user', text, now()])
+  }
+  await db('exec', `INSERT INTO ${table} (chat_type, chat_id, user_id, role, content, ts) VALUES (?,?,?,?,?,?)`,
+    [session.chat_type, session.chat_id, 0, 'assistant', reply, now()])
+  if (!normal && uid) {
+    await db('exec', `INSERT INTO ai_user (user_id, nickname, last_seen) VALUES (?,?,?)
+      ON CONFLICT(user_id) DO UPDATE SET nickname = excluded.nickname, last_seen = excluded.last_seen`,
+      [uid, session.nickname || '', now()])
+  }
+}
+
+async function askModel(messages) {
+  const r = await host.capability('llm.chat', { messages })
+  if (!r?.ok) return ''
+  return String(r.data?.text || '').trim()
+}
+
+async function sendBattle(chat, text) {
+  const paras = String(text).split(/\n+/).map((s) => s.trim()).filter(Boolean)
+  let parts = paras.slice(0, 3)
+  if (parts.length === 1 && parts[0].length > 60) {
+    const s = parts[0]
+    const mid = Math.ceil(s.length / 2)
+    parts = [s.slice(0, mid), s.slice(mid)]
+  }
+  for (let i = 0; i < parts.length; i += 1) {
+    if (i > 0) await new Promise((res) => setTimeout(res, 450))
+    await host.reply(chat, parts[i])
+  }
+}
+
+async function tiebaTakeover(session, text) {
+  if (settings.tieba_enabled === false || !tieba) return null
+  const chatType = session?.chat_type === 'private' ? 'private' : 'group'
+  const key = `${chatType}:${session?.chat_id ?? 0}`
+  if (!session?.chat_id || !tieba.isOn(key)) return null
+  const raw = String(text || '').trim()
+  if (!raw) return null
+  // 显式命令 / 切换指令不抢，交给正常分发处理
+  if (session.has_prefix) return null
+  if (/贴吧(鱼)?模式/.test(raw) || /^贴吧(\s|$)/.test(raw)) return null
+  const isOwner = tiebaOwners().includes(Number(session.user_id))
+  // 主人：100% 用正常人设回；群友：80% 开战、20% 不理
+  if (!isOwner && Math.random() * 100 >= 80) return { handled: true }
+  await ensureTiebaTable()
+  const rendered = await render(session.chat_type, session.chat_id, { noTieba: isOwner })
+  const history = isOwner
+    ? await historyFrom('ai_message', session, 12)
+    : await historyFrom('ai_tieba_message', session, 20)
+  const who = session.nickname || String(session.user_id)
+  const messages = [
+    { role: 'system', content: rendered.system },
+    ...history,
+    { role: 'user', content: `${who}: ${text}` },
+  ]
+  let reply = stripMeta(await askModel(messages))
+  if (isOwner) {
+    if (!reply) reply = '嗯？'
+  } else {
+    if (!reply) reply = '滚 别烦我'
+    if (charCount(reply) < 30) {
+      messages.push({ role: 'assistant', content: reply })
+      messages.push({ role: 'system', content: '太短了。重新骂，至少 30 字，只输出骂人的话，不要旁白。' })
+      const again = stripMeta(await askModel(messages))
+      if (charCount(again) > charCount(reply)) reply = again
+    }
+  }
+  if (!isOwner) setTimeout(() => { dropObserved(session, text).catch(() => {}) }, 1500)
+  await sendBattle(chatOf(session), reply)
+  await storeTurn(session, text, reply, isOwner)
+  return { handled: true }
+}
+
 serve({
   async initialize({ settings: s, data_dir }) {
     settings = s || {}
@@ -331,6 +482,7 @@ serve({
       warn: (message) => host.log('warn', message),
     })
     tieba.load()
+    ensureTiebaTable().catch(() => {})
     await ensureReady()
     host.log('info', '人设服务已启动（含贴吧鱼模式）主人 QQ=' + (process.env.QIXIN_OWNER || '（未注入）'))
     return { api_version: '1.0' }
@@ -355,7 +507,7 @@ serve({
     return { handled: true }
   },
 
-  async call_tool({ name, args }) {
+  async call_tool({ name, args, session }) {
     if (name === 'persona.render') {
       try {
         return { ok: true, data: await render(args?.chat_type, args?.chat_id, { noTieba: Boolean(args?.no_tieba) }) }
@@ -374,6 +526,16 @@ serve({
       // 给 ai-chat 用：贴吧鱼模式开着时，记忆不该记这一段（切回来会串味）
       const key = `${args?.chat_type === 'private' ? 'private' : 'group'}:${args?.chat_id ?? 0}`
       return { ok: true, data: { tieba: Boolean(tieba?.isOn(key)), enabled: settings.tieba_enabled !== false } }
+    }
+    if (name === 'core.dispatch') {
+      try {
+        host.log('info', 'hook 收到：' + JSON.stringify({ t: String(args?.text || '').slice(0, 20), chat: session?.chat_type + ':' + session?.chat_id, user: session?.user_id, prefix: session?.has_prefix }))
+        const r = await tiebaTakeover(session || {}, String(args?.text || ''))
+        host.log('info', 'hook 结果：' + JSON.stringify(r || null))
+        return { ok: true, data: r || {} }
+      } catch (e) {
+        return { ok: false, error: e.message }
+      }
     }
     if (name === 'tieba_add') {
       try {
